@@ -38,8 +38,8 @@ With Tamarin 1.12.0, the default DFS search can stall on `renewed_chain_is_execu
 | `tesla_is_executable` | exists-trace | Honest run completes end-to-end with SIB1 timing respected |
 | `base_chain_is_executable` | exists-trace | Bootstrap + SIB1 on base chain reachable without renewal |
 | `compromise_enables_forgery` | exists-trace | Sanity: compromise still enables forgery even when SIB1 timing is respected |
-| `authentic` | all-traces | Accepted SIB1 was sent by an honest gNB unless compromise or buffered-packet timing failure intervened |
-| `sib1_compromise_isolation` | all-traces | SIB1 key compromise does not forge past SIB1s unless buffered-packet timing fails |
+| `authentic` | all-traces | Accepted SIB1 was sent by an honest gNB unless the cell is compromised |
+| `sib1_compromise_isolation` | all-traces | SIB1 key compromise does not forge past SIB1s in other cells |
 | `renewal_is_executable` | exists-trace | Honest chain renewal is reachable without compromise |
 | `renewed_chain_is_executable` | exists-trace | SIB1 verification on a renewed chain is reachable without compromise |
 | `renewal_without_rebootstrap` | exists-trace | Renewal is driven by an earlier verified SIB1 unless the cell is already compromised |
@@ -49,8 +49,7 @@ With Tamarin 1.12.0, the default DFS search can stall on `renewed_chain_is_execu
 
 This model verifies the core TF5 protocol but abstracts several features from the paper:
 
-- **Symbolic time only** — Tamarin cannot model wall-clock time; safe-packet test and freshness checks are based on symbolic trace ordering.
-  - Signing-key validity period and signature freshness checks are abstracted into symbolic trace ordering of key/signature expiration and verification events.
+- **Symbolic time only** — Tamarin cannot model wall-clock time. The TESLA safe-packet test, signing-key validity period, and signature freshness checks are all enforced as restrictions over symbolic trace ordering of verification, disclosure, and expiration events.
 - Idealized cryptography — GG09 IBS, hash, and HMAC are idealized as black-box primitives.
 - Chain renewal covers the same-parameter path (`sp_next = 0`) only; the new-parameter path (`sp_next = 1`) is not modeled.
 
