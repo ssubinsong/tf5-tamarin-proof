@@ -18,7 +18,7 @@ Tamarin Prover model for **TF5** (TESLA-for-5G), a broadcast authentication sche
 tamarin-prover --prove --stop-on-trace=SEQDFS tf5.spthy
 ```
 
-On an Intel Core Ultra 7 155U (14 cores, 32 GB RAM), the full suite completes in 18.87 s.
+On an Intel Core Ultra 7 155U (14 cores, 32 GB RAM), the full suite completes in 27.58 s.
 With Tamarin 1.12.0, the default DFS search can stall on `renewed_chain_is_executable`; `SEQDFS` verifies the full suite.
 
 ## Lemmas
@@ -35,9 +35,9 @@ With Tamarin 1.12.0, the default DFS search can stall on `renewed_chain_is_execu
 | `bootstrap_freshness` | all-traces | Stale bootstrap messages with expired signatures are rejected |
 | `stale_gnb_signing_key_rejected` | all-traces | Bootstraps using expired gNB signing keys are rejected |
 | `bootstrap_compromise_bounded` | all-traces | IBS compromise does not retroactively forge bootstraps |
-| `tesla_is_executable` | exists-trace | Honest run completes end-to-end with SIB1 timing respected |
+| `tesla_is_executable` | exists-trace | Honest run completes end-to-end |
 | `base_chain_is_executable` | exists-trace | Bootstrap + SIB1 on base chain reachable without renewal |
-| `compromise_enables_forgery` | exists-trace | Sanity: compromise still enables forgery even when SIB1 timing is respected |
+| `compromise_enables_forgery` | exists-trace | Sanity: compromise enables forgery |
 | `authentic` | all-traces | Accepted SIB1 was sent by an honest gNB unless the cell is compromised |
 | `sib1_compromise_isolation` | all-traces | SIB1 key compromise does not forge past SIB1s in other cells |
 | `renewal_is_executable` | exists-trace | Honest chain renewal is reachable without compromise |
