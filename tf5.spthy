@@ -107,11 +107,13 @@ rule GnbSend:
 
 // --- Receiving — loop-based verification (Cremers style) ---
 
-// UE receives a SIB1 message and buffers it for later verification
+// UE receives a SIB1 message and buffers it for later verification.
+// Pattern-match exposes the MAC key k_mac; SafePktTest links the buffer
+// time to the disclosure of k_mac via the restriction below.
 rule UeRecv:
-  let msg = <m, mac> in
+  let msg = <m, MAC(f_prime(k_mac), m)> in
     [ !Receiver(cell_id, k0), In(msg), Fr(expiryCheck) ]
-  --[ PktBufferedAt(expiryCheck) ]->
+  --[ PktBufferedAt(expiryCheck), SafePktTest(k_mac) ]->
     [ UePendingAuth(expiryCheck, cell_id, k0, msg) ]
 
 // UE obtains a disclosed key from the network and starts the verification loop
@@ -204,6 +206,14 @@ restriction GnbKeyNotExpired:
   GnbKeyNotExpired(cell_id, key_validity) @ s
   & GnbKeyExpire(cell_id, key_validity) @ e
   ==> s < e"
+
+// TESLA safe-packet test: a UE-side assertion emitted at buffer time
+// that the MAC key used by the packet has not yet been disclosed.
+restriction SafePktTest:
+  "All k #s #d.
+     SafePktTest(k) @ s
+   & GnbDisclosedKey(k) @ d
+   ==> s < d"
 
 // --- Proof infrastructure (order is load-bearing) ---
 
