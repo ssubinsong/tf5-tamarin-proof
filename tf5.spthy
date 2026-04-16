@@ -303,12 +303,7 @@ lemma tesla_is_executable:
   "( Ex cell_id m k check k0_chain #i #j.
       SIB1_Verified(cell_id, m, k, check, k0_chain) @ i
      & SIB1_Sent(cell_id, m, k) @ j )
-  & (All cell_id #r. GnbCompromised(cell_id) @ r ==> F)
-  & (All cell_id m k check k0_chain #v #r #d.
-       SIB1_Verified(cell_id, m, k, check, k0_chain) @ v
-     & PktBufferedAt(check) @ r
-     & GnbDisclosedKey(k) @ d
-     ==> r < d)"
+  & (All cell_id #r. GnbCompromised(cell_id) @ r ==> F)"
 
 // Full base-chain lifecycle is executable (bootstrap -> SIB1, no renewal)
 lemma base_chain_is_executable:
@@ -324,27 +319,18 @@ lemma base_chain_is_executable:
 // Adversary model validation: compromise enables forgery
 lemma compromise_enables_forgery:
   exists-trace
-  "( Ex cell_id m k check k0_chain #v #c.
+  "Ex cell_id m k check k0_chain #v #c.
      SIB1_Verified(cell_id, m, k, check, k0_chain) @ v
    & GnbCompromised(cell_id) @ c
-   & (All #s. SIB1_Sent(cell_id, m, k) @ s ==> F) )
- & (All cell_id m k check k0_chain #v #r #d.
-      SIB1_Verified(cell_id, m, k, check, k0_chain) @ v
-    & PktBufferedAt(check) @ r
-    & GnbDisclosedKey(k) @ d
-    ==> r < d)"
+   & (All #s. SIB1_Sent(cell_id, m, k) @ s ==> F)"
 
-// Accepted SIB1 was sent by an honest gNB unless compromise or late-buffering
+// Accepted SIB1 was sent by an honest gNB unless the cell was compromised
 lemma authentic:
   "(All cell_id m k check k0_chain #i.
       SIB1_Verified(cell_id, m, k, check, k0_chain) @ i
     ==>
       (Ex #j. SIB1_Sent(cell_id, m, k) @ j & j < i)
-    | (Ex #j. GnbCompromised(cell_id) @ j & j < i)
-    | (Ex #r #d. PktBufferedAt(check) @ r
-               & GnbDisclosedKey(k) @ d
-               & d < r
-               & r < i))"
+    | (Ex #j. GnbCompromised(cell_id) @ j & j < i))"
 
 // Compromise isolation: compromising cell_id doesn't affect cell_id2
 lemma sib1_compromise_isolation:
@@ -354,11 +340,7 @@ lemma sib1_compromise_isolation:
    & not(cell_id = cell_id2)
    ==>
      (Ex #s. SIB1_Sent(cell_id2, m, k) @ s & #s < #j)
-   | (Ex #c2. GnbCompromised(cell_id2) @ c2 & c2 < j)
-   | (Ex #r #d. PktBufferedAt(check) @ r
-              & GnbDisclosedKey(k) @ d
-              & d < r
-              & r < j)"
+   | (Ex #c2. GnbCompromised(cell_id2) @ c2 & c2 < j)"
 
 // --- Chain renewal ---
 
