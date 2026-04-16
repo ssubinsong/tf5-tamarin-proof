@@ -112,15 +112,15 @@ rule GnbSend:
 // time to the disclosure of k_mac via the restriction below.
 rule UeRecv:
   let msg = <m, MAC(f_prime(k_mac), m)> in
-    [ !Receiver(cell_id, k0), In(msg), Fr(expiryCheck) ]
-  --[ PktBufferedAt(expiryCheck), SafePktTest(k_mac) ]->
-    [ UePendingAuth(expiryCheck, cell_id, k0, msg) ]
+    [ !Receiver(cell_id, k0), In(msg) ]
+  --[ SafePktTest(k_mac) ]->
+    [ UePendingAuth(cell_id, k0, msg) ]
 
 // UE obtains a disclosed key from the network and starts the verification loop
 rule UeCheckAuth0:
-  let args = <k0, expiryCheck, cell_id, k, msg>
+  let args = <k0, cell_id, k, msg>
   in
-    [ UePendingAuth(expiryCheck, cell_id, k0, msg)
+    [ UePendingAuth(cell_id, k0, msg)
     , In(k)
     , Fr(loopId)
     ]
@@ -130,7 +130,7 @@ rule UeCheckAuth0:
 // Verification loop step: advance one hash towards k0
 // !CellNextKey premise constrains walk to cell_id's chain, giving identity binding.
 rule UeCheckAuth:
-  let args = <k0, expiryCheck, cell_id, kOrig, msg> in
+  let args = <k0, cell_id, kOrig, msg> in
     [ CheckAuthLoop(loopId, k, args), !CellNextKey(cell_id, f(k), k) ]
   --[ CheckLoop(loopId, k, args, kOrig), Loop(loopId, k, kOrig) ]->
     [ CheckAuthLoop(loopId, f(k), args) ]
@@ -139,8 +139,8 @@ rule UeCheckAuth:
 rule UeCheckAuthClaim:
   let msg = <m, MAC(f_prime(kRef), m)>
   in
-    [ CheckAuthLoop(loopId, k0, <k0, expiryCheck, cell_id, kRef, msg>) ]
-  --[ SIB1_Verified(cell_id, m, kRef, expiryCheck, k0) ]->
+    [ CheckAuthLoop(loopId, k0, <k0, cell_id, kRef, msg>) ]
+  --[ SIB1_Verified(cell_id, m, kRef, k0) ]->
     [ !SIB1_DeliveredOnChain(cell_id, k0) ]
 
 // --- Chain renewal (gNB) ---
@@ -300,17 +300,17 @@ lemma bootstrap_compromise_bounded:
 // TESLA delivery is executable under honest conditions
 lemma tesla_is_executable:
   exists-trace
-  "( Ex cell_id m k check k0_chain #i #j.
-      SIB1_Verified(cell_id, m, k, check, k0_chain) @ i
+  "( Ex cell_id m k k0_chain #i #j.
+      SIB1_Verified(cell_id, m, k, k0_chain) @ i
      & SIB1_Sent(cell_id, m, k) @ j )
   & (All cell_id #r. GnbCompromised(cell_id) @ r ==> F)"
 
 // Full base-chain lifecycle is executable (bootstrap -> SIB1, no renewal)
 lemma base_chain_is_executable:
   exists-trace
-  "( Ex cell_id key_validity m k check k0 t0 tp sig_instance #i #b.
+  "( Ex cell_id key_validity m k k0 t0 tp sig_instance #i #b.
     SIB_TF5_Verified(cell_id, key_validity, k0, t0, tp, sig_instance) @ b
-    & SIB1_Verified(cell_id, m, k, check, k0) @ i
+    & SIB1_Verified(cell_id, m, k, k0) @ i
     & b < i
     & (All #r k0_next. ChainRenewed(cell_id, k0_next) @ r ==> i < r)
     )
@@ -319,24 +319,24 @@ lemma base_chain_is_executable:
 // Adversary model validation: compromise enables forgery
 lemma compromise_enables_forgery:
   exists-trace
-  "Ex cell_id m k check k0_chain #v #c.
-     SIB1_Verified(cell_id, m, k, check, k0_chain) @ v
+  "Ex cell_id m k k0_chain #v #c.
+     SIB1_Verified(cell_id, m, k, k0_chain) @ v
    & GnbCompromised(cell_id) @ c
    & (All #s. SIB1_Sent(cell_id, m, k) @ s ==> F)"
 
 // Accepted SIB1 was sent by an honest gNB unless the cell was compromised
 lemma authentic:
-  "(All cell_id m k check k0_chain #i.
-      SIB1_Verified(cell_id, m, k, check, k0_chain) @ i
+  "(All cell_id m k k0_chain #i.
+      SIB1_Verified(cell_id, m, k, k0_chain) @ i
     ==>
       (Ex #j. SIB1_Sent(cell_id, m, k) @ j & j < i)
     | (Ex #j. GnbCompromised(cell_id) @ j & j < i))"
 
 // Compromise isolation: compromising cell_id doesn't affect cell_id2
 lemma sib1_compromise_isolation:
-  "All cell_id cell_id2 m k check k0_chain #j #c.
+  "All cell_id cell_id2 m k k0_chain #j #c.
      GnbCompromised(cell_id) @ c
-   & SIB1_Verified(cell_id2, m, k, check, k0_chain) @ j
+   & SIB1_Verified(cell_id2, m, k, k0_chain) @ j
    & not(cell_id = cell_id2)
    ==>
      (Ex #s. SIB1_Sent(cell_id2, m, k) @ s & #s < #j)
@@ -354,9 +354,9 @@ lemma renewal_is_executable:
 // SIB1 verification on a renewed chain is reachable without compromise
 lemma renewed_chain_is_executable:
   exists-trace
-  "( Ex cell_id m k check k0_next #i #r.
+  "( Ex cell_id m k k0_next #i #r.
        ChainRenewed(cell_id, k0_next) @ r
-     & SIB1_Verified(cell_id, m, k, check, k0_next) @ i
+     & SIB1_Verified(cell_id, m, k, k0_next) @ i
      & r < i )
   & (All cell_id #c. GnbCompromised(cell_id) @ c ==> F)"
 
