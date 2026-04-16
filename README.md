@@ -1,6 +1,6 @@
 # TESLA-for-5G: Tamarin Formal Verification
 
-Tamarin Prover model for **TF5** (TESLA-for-5G), a broadcast authentication scheme for 5G System Information. The model is based on the TESLA proof of Cremers [1], and is extended with a GG09 identity-based signature bootstrap and TESLA chain renewal. All 19 lemmas verify.
+Tamarin Prover model for **TF5** (TESLA-for-5G), a broadcast authentication scheme for 5G System Information. The model is based on the TESLA proof of Cremers [1], and is extended with a GG09 identity-based signature bootstrap and TESLA chain renewal. All 20 lemmas verify.
 
 ## Paper
 
@@ -18,7 +18,7 @@ Tamarin Prover model for **TF5** (TESLA-for-5G), a broadcast authentication sche
 tamarin-prover --prove --stop-on-trace=SEQDFS tf5.spthy
 ```
 
-On an Intel Core Ultra 7 155U (14 cores, 32 GB RAM), the full suite completes in 27.58 s.
+On an Intel Core Ultra 7 155U (14 cores, 32 GB RAM), the full suite completes in 26.52 s.
 With Tamarin 1.12.0, the default DFS search can stall on `renewed_chain_is_executable`; `SEQDFS` verifies the full suite.
 
 ## Lemmas
@@ -39,6 +39,7 @@ With Tamarin 1.12.0, the default DFS search can stall on `renewed_chain_is_execu
 | `base_chain_is_executable` | exists-trace | Bootstrap + SIB1 on base chain reachable without renewal |
 | `compromise_enables_forgery` | exists-trace | Sanity: compromise enables forgery |
 | `authentic` | all-traces | Accepted SIB1 was sent by an honest gNB unless the cell is compromised |
+| `sib1_freshness` | all-traces | Every honest send of the accepted SIB1 precedes its reception (no future-replay) |
 | `sib1_compromise_isolation` | all-traces | SIB1 key compromise does not forge past SIB1s in other cells |
 | `renewal_is_executable` | exists-trace | Honest chain renewal is reachable without compromise |
 | `renewed_chain_is_executable` | exists-trace | SIB1 verification on a renewed chain is reachable without compromise |

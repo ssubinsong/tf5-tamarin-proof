@@ -331,10 +331,17 @@ lemma authentic:
       & SIB1_Verified(cell_id, m, k, k0_chain) @ i
     ==>
       (Ex #s.
-       (SIB1_Sent(cell_id, m, k) @ s
-     & s < r))
+       (SIB1_Sent(cell_id, m, k) @ s & s < r))
     | (Ex #j. GnbCompromised(cell_id) @ j & j < i)"
  
+lemma sib1_freshness:
+  "All cell_id m k k0_chain #i #r.
+        SIB1_Received(cell_id, m, k) @ r
+      & SIB1_Verified(cell_id, m, k, k0_chain) @ i
+    ==>
+      (All #s.
+       (SIB1_Sent(cell_id, m, k) @ s ==> s < r))
+    | (Ex #j. GnbCompromised(cell_id) @ j & j < i)"
 
 // Compromise isolation: compromising cell_id doesn't affect cell_id2
 lemma sib1_compromise_isolation:
