@@ -113,7 +113,7 @@ rule GnbSend:
 rule UeRecv:
   let msg = <m, MAC(f_prime(k_mac), m)> in
     [ !Receiver(cell_id, k0), In(msg) ]
-  --[ SafePktTest(k_mac) ]->
+  --[ SafePktTest(k_mac), SIB1_Received(cell_id, m, k_mac) ]->
     [ UePendingAuth(cell_id, k0, msg) ]
 
 // UE obtains a disclosed key from the network and starts the verification loop
@@ -326,11 +326,15 @@ lemma compromise_enables_forgery:
 
 // Accepted SIB1 was sent by an honest gNB unless the cell was compromised
 lemma authentic:
-  "(All cell_id m k k0_chain #i.
-      SIB1_Verified(cell_id, m, k, k0_chain) @ i
+  "All cell_id m k k0_chain #i #r.
+        SIB1_Received(cell_id, m, k) @ r
+      & SIB1_Verified(cell_id, m, k, k0_chain) @ i
     ==>
-      (Ex #j. SIB1_Sent(cell_id, m, k) @ j & j < i)
-    | (Ex #j. GnbCompromised(cell_id) @ j & j < i))"
+      (Ex #s.
+       (SIB1_Sent(cell_id, m, k) @ s
+     & s < r))
+    | (Ex #j. GnbCompromised(cell_id) @ j & j < i)"
+ 
 
 // Compromise isolation: compromising cell_id doesn't affect cell_id2
 lemma sib1_compromise_isolation:
