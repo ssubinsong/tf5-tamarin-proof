@@ -108,12 +108,13 @@ rule GnbSend:
 // --- Receiving — loop-based verification (Cremers style) ---
 
 // UE receives a SIB1 message and buffers it for later verification.
-// Pattern-match exposes the MAC key k_mac; SafePktTest links the buffer
-// time to the disclosure of k_mac via the restriction below.
+// The tag is kept opaque here (the UE cannot see the MAC key at buffer time);
+// SafePktTest fires on the opaque tag and the restriction below pattern-matches
+// the MAC structure to enforce the TESLA "packet before key" safe packet test.
 rule UeRecv:
-  let msg = <m, MAC(f_prime(k_mac), m)> in
+  let msg = <m, tag> in
     [ !Receiver(cell_id, k0), In(msg) ]
-  --[ SafePktTest(k_mac), SIB1_Received(cell_id, m, k_mac) ]->
+  --[ SafePktTest(tag), SIB1_Received(cell_id, m, tag) ]->
     [ UePendingAuth(cell_id, k0, msg) ]
 
 // UE obtains a disclosed key from the network and starts the verification loop
@@ -209,9 +210,12 @@ restriction GnbKeyNotExpired:
 
 // TESLA safe-packet test: a UE-side assertion emitted at buffer time
 // that the MAC key used by the packet has not yet been disclosed.
+// The restriction pattern-matches the MAC structure on the opaque tag; when
+// the tag is not a MAC term the restriction is vacuous (verification will
+// also fail downstream, so nothing accepted).
 restriction SafePktTest:
-  "All k #s #d.
-     SafePktTest(k) @ s
+  "All k m #s #d.
+     SafePktTest(MAC(f_prime(k), m)) @ s
    & GnbDisclosedKey(k) @ d
    ==> s < d"
 
@@ -327,16 +331,16 @@ lemma compromise_enables_forgery:
 // Accepted SIB1 was sent by an honest gNB unless the cell was compromised
 lemma authentic:
   "All cell_id m k k0_chain #i #r.
-        SIB1_Received(cell_id, m, k) @ r
+        SIB1_Received(cell_id, m, MAC(f_prime(k), m)) @ r
       & SIB1_Verified(cell_id, m, k, k0_chain) @ i
     ==>
       (Ex #s.
        (SIB1_Sent(cell_id, m, k) @ s & s < r))
     | (Ex #j. GnbCompromised(cell_id) @ j & j < i)"
- 
+
 lemma sib1_freshness:
   "All cell_id m k k0_chain #i #r.
-        SIB1_Received(cell_id, m, k) @ r
+        SIB1_Received(cell_id, m, MAC(f_prime(k), m)) @ r
       & SIB1_Verified(cell_id, m, k, k0_chain) @ i
     ==>
       (All #s.
