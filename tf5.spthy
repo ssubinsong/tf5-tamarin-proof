@@ -100,10 +100,11 @@ rule UeBootstrapVerify:
 
 // gNB sends SIB1: discloses k_prev, sends message MAC'd with f_prime(k_next)
 rule GnbSend:
-  let msg = <m, MAC(f_prime(k_next), m)> in
+  let tag = MAC(f_prime(k_next), m)
+      msg = <m, tag> in
     [ GnbState(cell_id, k_prev, t0, tp), !CellNextKey(cell_id, k_prev, k_next), Fr(m) ]
   --[ GnbDisclosedKey(k_prev)
-    , SIB1_Sent(cell_id, m, k_next)
+    , SIB1_Sent(cell_id, m, k_next, tag)
     , IntervalExpired(cell_id, k_prev)
     ]->
     [ GnbState(cell_id, k_next, t0, tp), Out(k_prev), Out(msg) ]
@@ -121,7 +122,7 @@ rule UeRecv:
 rule UeRecvConfirm:
   let msg = <m, tag> in
     [ UeRecvBuffer(rid, cell_id, k0, msg) ]
-  --[ SafePktTest(tag) ]->
+  --[ SafePktTest(rid, tag) ]->
     [ UePendingAuth(rid, cell_id, k0, msg) ]
 
 // UE obtains a disclosed key from the network and starts the verification loop
@@ -221,8 +222,8 @@ restriction GnbKeyNotExpired:
 // the tag is not a MAC term the restriction is vacuous (verification will
 // also fail downstream, so nothing accepted).
 restriction SafePktTest:
-  "All k m #s #d.
-     SafePktTest(MAC(f_prime(k), m)) @ s
+  "All k m rid #s #d.
+     SafePktTest(rid, MAC(f_prime(k), m)) @ s
    & GnbDisclosedKey(k) @ d
    ==> s < d"
 
@@ -256,7 +257,7 @@ lemma knows_only_expired_chain_keys [reuse, use_induction]:
 lemma knows [reuse, use_induction]:
   "All k m #i #j. ChainKey(k) @ i & KU(MAC(f_prime(k), m)) @ j
    ==> (Ex #e. GnbDisclosedKey(k) @ e & e < j)
-     | (Ex cell_id #s. SIB1_Sent(cell_id, m, k) @ s & s < j)"
+     | (Ex cell_id tag #s. SIB1_Sent(cell_id, m, k, tag) @ s & s < j)"
 
 // --- Bootstrap (IBS initial key distribution) ---
 
@@ -311,9 +312,9 @@ lemma bootstrap_compromise_bounded:
 // TESLA delivery is executable under honest conditions
 lemma tesla_is_executable:
   exists-trace
-  "( Ex rid cell_id m k k0_chain #i #j.
+  "( Ex rid cell_id m k k0_chain tag #i #j.
       SIB1_Verified(rid, cell_id, m, k, k0_chain) @ i
-     & SIB1_Sent(cell_id, m, k) @ j )
+     & SIB1_Sent(cell_id, m, k, tag) @ j )
   & (All cell_id #r. GnbCompromised(cell_id) @ r ==> F)"
 
 // Full base-chain lifecycle is executable (bootstrap -> SIB1, no renewal)
@@ -333,7 +334,7 @@ lemma compromise_enables_forgery:
   "Ex rid cell_id m k k0_chain #v #c.
      SIB1_Verified(rid, cell_id, m, k, k0_chain) @ v
    & GnbCompromised(cell_id) @ c
-   & (All #s. SIB1_Sent(cell_id, m, k) @ s ==> F)"
+   & (All tag #s. SIB1_Sent(cell_id, m, k, tag) @ s ==> F)"
 
 // Accepted SIB1 was sent by an honest gNB unless the cell was compromised
 lemma authentic:
@@ -341,24 +342,19 @@ lemma authentic:
         SIB1_Received(rid, cell_id, m, MAC(f_prime(k), m)) @ r
       & SIB1_Verified(rid, cell_id, m, k, k0_chain) @ i
     ==>
-      (Ex #s.
-       (SIB1_Sent(cell_id, m, k) @ s & s < r))
+      (Ex tag #s.
+       (SIB1_Sent(cell_id, m, k, tag) @ s & s < r))
     | (Ex #j. GnbCompromised(cell_id) @ j & j < i)"
 
-// Cross-interval replay rejection: for every verified SIB1 instance, the
-// unique reception that seeded it occurred strictly before its MAC key's
-// interval expired. Replays arriving in a later interval are dropped at the
-// SafePktTest gate and cannot produce a new verification.
 lemma sib1_freshness:
-  "All rid cell_id m k k0 #s #v.
-       SIB1_Sent(cell_id, m, k) @ s
+  "All rid cell_id m k k0 #r #s #v #n.
+       SIB1_Received(rid, cell_id, m, MAC(f_prime(k), m)) @ r
+     & SafePktTest(rid, MAC(f_prime(k), m)) @ s
      & SIB1_Verified(rid, cell_id, m, k, k0) @ v
+     & IntervalExpired(cell_id, k) @ n
      ==>
-       (All #r. SIB1_Received(rid, cell_id, m, MAC(f_prime(k), m)) @ r
-                & r < v
-                ==>
-                  (All #n. IntervalExpired(cell_id, k) @ n ==> r < n))
-     | (Ex #c. GnbCompromised(cell_id) @ c & c < v)"
+        r < n
+      | Ex #c. GnbCompromised(cell_id) @ c & c < v"
 
 // Compromise isolation: compromising cell_id doesn't affect cell_id2
 lemma sib1_compromise_isolation:
@@ -367,7 +363,7 @@ lemma sib1_compromise_isolation:
    & SIB1_Verified(rid, cell_id2, m, k, k0_chain) @ j
    & not(cell_id = cell_id2)
    ==>
-     (Ex #s. SIB1_Sent(cell_id2, m, k) @ s & #s < #j)
+     (Ex tag #s. SIB1_Sent(cell_id2, m, k, tag) @ s & #s < #j)
    | (Ex #c2. GnbCompromised(cell_id2) @ c2 & c2 < j)"
 
 // --- Chain renewal ---
