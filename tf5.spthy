@@ -107,20 +107,14 @@ rule GnbSend:
 
 // --- Receiving — loop-based verification (Cremers style) ---
 
-// UE observes a SIB1 packet on air. SafePktTest has moved to UeRecvConfirm so
-// that post-disclosure replays are visible as SIB1_Received events (needed to
-// state sib1_freshness negatively). The fresh rid is threaded through the
-// linear verification pipeline and carried into SIB1_Verified, binding each
-// verification to the specific reception that produced it.
+// UE observes a SIB1 packet on air. `rid` is a reception-specific identifier to link this event to the subsequent verification steps.
 rule UeRecv:
   let msg = <m, tag> in
     [ !Receiver(cell_id, k0), In(msg), Fr(rid) ]
   --[ SIB1_Received(rid, cell_id, m, tag) ]->
     [ UeRecvBuffer(rid, cell_id, k0, msg) ]
 
-// Safe-packet gate: if the tag is MAC(f_prime(k), m) and k has already been
-// disclosed, the SafePktTest restriction blocks this transition and the
-// reception cannot progress to verification.
+// Safe-packet test gate
 rule UeRecvConfirm:
   let msg = <m, tag> in
     [ UeRecvBuffer(rid, cell_id, k0, msg) ]
@@ -146,8 +140,7 @@ rule UeCheckAuth:
   --[ CheckLoop(loopId, k, args, kOrig), Loop(loopId, k, kOrig) ]->
     [ CheckAuthLoop(loopId, f(k), args) ]
 
-// Loop reached k0: verify MAC and accept message. rid carried in args links
-// this verification to the specific UeRecv that seeded the pipeline.
+// Loop reached k0: verify MAC and accept message.
 rule UeCheckAuthClaim:
   let msg = <m, MAC(f_prime(kRef), m)>
   in
@@ -340,7 +333,7 @@ lemma compromise_enables_forgery:
    & (All #s. SIB1_Sent(cell_id, m, k) @ s ==> F)"
 
 // Accepted SIB1 was sent by an honest gNB unless the cell was compromised
-lemma authentic [reuse]:
+lemma authentic:
   "All rid cell_id m k k0_chain #i #r.
         SIB1_Received(rid, cell_id, m, MAC(f_prime(k), m)) @ r
       & SIB1_Verified(rid, cell_id, m, k, k0_chain) @ i
