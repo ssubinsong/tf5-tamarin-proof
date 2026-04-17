@@ -104,7 +104,7 @@ rule GnbSend:
     [ GnbState(cell_id, k_prev, t0, tp), !CellNextKey(cell_id, k_prev, k_next), Fr(m) ]
   --[ GnbDisclosedKey(k_prev)
     , SIB1_Sent(cell_id, m, k_next)
-    , ChainAdvanced(cell_id, k_prev)
+    , IntervalExpired(cell_id, k_prev)
     ]->
     [ GnbState(cell_id, k_next, t0, tp), Out(k_prev), Out(msg) ]
 
@@ -346,9 +346,9 @@ lemma authentic:
     | (Ex #j. GnbCompromised(cell_id) @ j & j < i)"
 
 // Cross-interval replay rejection: for every verified SIB1 instance, the
-// unique reception that seeded it occurred strictly before the cell's TESLA
-// chain advanced past its MAC key. Replays arriving in a later interval are
-// dropped at the SafePktTest gate and cannot produce a new verification.
+// unique reception that seeded it occurred strictly before its MAC key's
+// interval expired. Replays arriving in a later interval are dropped at the
+// SafePktTest gate and cannot produce a new verification.
 lemma sib1_freshness:
   "All rid cell_id m k k0 #s #v.
        SIB1_Sent(cell_id, m, k) @ s
@@ -357,7 +357,7 @@ lemma sib1_freshness:
        (All #r. SIB1_Received(rid, cell_id, m, MAC(f_prime(k), m)) @ r
                 & r < v
                 ==>
-                  (All #n. ChainAdvanced(cell_id, k) @ n ==> r < n))
+                  (All #n. IntervalExpired(cell_id, k) @ n ==> r < n))
      | (Ex #c. GnbCompromised(cell_id) @ c & c < v)"
 
 // Compromise isolation: compromising cell_id doesn't affect cell_id2
