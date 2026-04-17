@@ -102,7 +102,10 @@ rule UeBootstrapVerify:
 rule GnbSend:
   let msg = <m, MAC(f_prime(k_next), m)> in
     [ GnbState(cell_id, k_prev, t0, tp), !CellNextKey(cell_id, k_prev, k_next), Fr(m) ]
-  --[ GnbDisclosedKey(k_prev), SIB1_Sent(cell_id, m, k_next) ]->
+  --[ GnbDisclosedKey(k_prev)
+    , SIB1_Sent(cell_id, m, k_next)
+    , ChainAdvanced(cell_id, k_prev)
+    ]->
     [ GnbState(cell_id, k_next, t0, tp), Out(k_prev), Out(msg) ]
 
 // --- Receiving — loop-based verification (Cremers style) ---
