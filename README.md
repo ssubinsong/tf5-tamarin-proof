@@ -39,7 +39,7 @@ With Tamarin 1.12.0, the default DFS search can stall on `renewed_chain_is_execu
 | `base_chain_is_executable` | exists-trace | Bootstrap + SIB1 on base chain reachable without renewal |
 | `compromise_enables_forgery` | exists-trace | Sanity: compromise enables forgery |
 | `authentic` | all-traces | Accepted SIB1 was sent by an honest gNB unless the cell is compromised |
-| `sib1_freshness` | all-traces | Every accepted SIB1 was received before the MAC key was publicly disclosed; post-disclosure replays are dropped at the safe-packet gate |
+| `sib1_freshness` | all-traces | Every accepted SIB1 was received before the cell's TESLA chain advanced past its MAC key; replays arriving in a later interval are rejected at the safe-packet gate |
 | `sib1_compromise_isolation` | all-traces | SIB1 key compromise does not forge past SIB1s in other cells |
 | `renewal_is_executable` | exists-trace | Honest chain renewal is reachable without compromise |
 | `renewed_chain_is_executable` | exists-trace | SIB1 verification on a renewed chain is reachable without compromise |
@@ -53,6 +53,7 @@ This model verifies the core TF5 protocol but abstracts several features from th
 - **Symbolic time only** — Tamarin cannot model wall-clock time. The TESLA safe-packet test, signing-key validity period, and signature freshness checks are all enforced as restrictions over symbolic trace ordering of verification, disclosure, and expiration events.
 - Idealized cryptography — GG09 IBS, hash, and HMAC are idealized as black-box primitives.
 - Chain renewal covers the same-parameter path (`sp_next = 0`) only; the new-parameter path (`sp_next = 1`) is not modeled.
+- **Zero disclosure delay (`d = 1`)** — Each `GnbSend` rule firing atomically advances the chain *and* discloses the previous key, so chain-advancement and key-disclosure events coincide in the trace. This matches the time-free abstraction of Cremers [1]. Consequently, cross-interval replay attacks that only arise under a realistic `d > 1` disclosure delay — where a replayed packet from interval *i* could arrive during interval *i+1* but before *K<sub>i</sub>* is published — are not expressible in this model. Modeling `d > 1` explicitly would require restructuring the TESLA rules with interval-indexed state and is out of scope.
 
 
 ## Acknowledgements
