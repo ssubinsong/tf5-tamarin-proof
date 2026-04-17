@@ -107,21 +107,31 @@ rule GnbSend:
 
 // --- Receiving — loop-based verification (Cremers style) ---
 
-// UE receives a SIB1 message and buffers it for later verification.
-// The tag is kept opaque here (the UE cannot see the MAC key at buffer time);
-// SafePktTest fires on the opaque tag and the restriction below pattern-matches
-// the MAC structure to enforce the TESLA "packet before key" safe packet test.
+// UE observes a SIB1 packet on air. SafePktTest has moved to UeRecvConfirm so
+// that post-disclosure replays are visible as SIB1_Received events (needed to
+// state sib1_freshness negatively). The fresh rid is threaded through the
+// linear verification pipeline and carried into SIB1_Verified, binding each
+// verification to the specific reception that produced it.
 rule UeRecv:
   let msg = <m, tag> in
-    [ !Receiver(cell_id, k0), In(msg) ]
-  --[ SafePktTest(tag), SIB1_Received(cell_id, m, tag) ]->
-    [ UePendingAuth(cell_id, k0, msg) ]
+    [ !Receiver(cell_id, k0), In(msg), Fr(rid) ]
+  --[ SIB1_Received(rid, cell_id, m, tag) ]->
+    [ UeRecvBuffer(rid, cell_id, k0, msg) ]
+
+// Safe-packet gate: if the tag is MAC(f_prime(k), m) and k has already been
+// disclosed, the SafePktTest restriction blocks this transition and the
+// reception cannot progress to verification.
+rule UeRecvConfirm:
+  let msg = <m, tag> in
+    [ UeRecvBuffer(rid, cell_id, k0, msg) ]
+  --[ SafePktTest(tag) ]->
+    [ UePendingAuth(rid, cell_id, k0, msg) ]
 
 // UE obtains a disclosed key from the network and starts the verification loop
 rule UeCheckAuth0:
-  let args = <k0, cell_id, k, msg>
+  let args = <k0, cell_id, k, msg, rid>
   in
-    [ UePendingAuth(cell_id, k0, msg)
+    [ UePendingAuth(rid, cell_id, k0, msg)
     , In(k)
     , Fr(loopId)
     ]
@@ -131,17 +141,18 @@ rule UeCheckAuth0:
 // Verification loop step: advance one hash towards k0
 // !CellNextKey premise constrains walk to cell_id's chain, giving identity binding.
 rule UeCheckAuth:
-  let args = <k0, cell_id, kOrig, msg> in
+  let args = <k0, cell_id, kOrig, msg, rid> in
     [ CheckAuthLoop(loopId, k, args), !CellNextKey(cell_id, f(k), k) ]
   --[ CheckLoop(loopId, k, args, kOrig), Loop(loopId, k, kOrig) ]->
     [ CheckAuthLoop(loopId, f(k), args) ]
 
-// Loop reached k0: verify MAC and accept message.
+// Loop reached k0: verify MAC and accept message. rid carried in args links
+// this verification to the specific UeRecv that seeded the pipeline.
 rule UeCheckAuthClaim:
   let msg = <m, MAC(f_prime(kRef), m)>
   in
-    [ CheckAuthLoop(loopId, k0, <k0, cell_id, kRef, msg>) ]
-  --[ SIB1_Verified(cell_id, m, kRef, k0) ]->
+    [ CheckAuthLoop(loopId, k0, <k0, cell_id, kRef, msg, rid>) ]
+  --[ SIB1_Verified(rid, cell_id, m, kRef, k0) ]->
     [ !SIB1_DeliveredOnChain(cell_id, k0) ]
 
 // --- Chain renewal (gNB) ---
@@ -208,7 +219,7 @@ restriction GnbKeyNotExpired:
   & GnbKeyExpire(cell_id, key_validity) @ e
   ==> s < e"
 
-// TESLA safe-packet test: a UE-side assertion emitted at buffer time
+// TESLA safe-packet test: a UE-side assertion emitted at UeRecvConfirm
 // that the MAC key used by the packet has not yet been disclosed.
 // The restriction pattern-matches the MAC structure on the opaque tag; when
 // the tag is not a MAC term the restriction is vacuous (verification will
@@ -304,17 +315,17 @@ lemma bootstrap_compromise_bounded:
 // TESLA delivery is executable under honest conditions
 lemma tesla_is_executable:
   exists-trace
-  "( Ex cell_id m k k0_chain #i #j.
-      SIB1_Verified(cell_id, m, k, k0_chain) @ i
+  "( Ex rid cell_id m k k0_chain #i #j.
+      SIB1_Verified(rid, cell_id, m, k, k0_chain) @ i
      & SIB1_Sent(cell_id, m, k) @ j )
   & (All cell_id #r. GnbCompromised(cell_id) @ r ==> F)"
 
 // Full base-chain lifecycle is executable (bootstrap -> SIB1, no renewal)
 lemma base_chain_is_executable:
   exists-trace
-  "( Ex cell_id key_validity m k k0 t0 tp sig_instance #i #b.
+  "( Ex rid cell_id key_validity m k k0 t0 tp sig_instance #i #b.
     SIB_TF5_Verified(cell_id, key_validity, k0, t0, tp, sig_instance) @ b
-    & SIB1_Verified(cell_id, m, k, k0) @ i
+    & SIB1_Verified(rid, cell_id, m, k, k0) @ i
     & b < i
     & (All #r k0_next. ChainRenewed(cell_id, k0_next) @ r ==> i < r)
     )
@@ -323,35 +334,41 @@ lemma base_chain_is_executable:
 // Adversary model validation: compromise enables forgery
 lemma compromise_enables_forgery:
   exists-trace
-  "Ex cell_id m k k0_chain #v #c.
-     SIB1_Verified(cell_id, m, k, k0_chain) @ v
+  "Ex rid cell_id m k k0_chain #v #c.
+     SIB1_Verified(rid, cell_id, m, k, k0_chain) @ v
    & GnbCompromised(cell_id) @ c
    & (All #s. SIB1_Sent(cell_id, m, k) @ s ==> F)"
 
 // Accepted SIB1 was sent by an honest gNB unless the cell was compromised
-lemma authentic:
-  "All cell_id m k k0_chain #i #r.
-        SIB1_Received(cell_id, m, MAC(f_prime(k), m)) @ r
-      & SIB1_Verified(cell_id, m, k, k0_chain) @ i
+lemma authentic [reuse]:
+  "All rid cell_id m k k0_chain #i #r.
+        SIB1_Received(rid, cell_id, m, MAC(f_prime(k), m)) @ r
+      & SIB1_Verified(rid, cell_id, m, k, k0_chain) @ i
     ==>
       (Ex #s.
        (SIB1_Sent(cell_id, m, k) @ s & s < r))
     | (Ex #j. GnbCompromised(cell_id) @ j & j < i)"
 
+// Post-disclosure replay rejection: for every verified SIB1 instance, the
+// unique reception that seeded it occurred strictly before any public
+// disclosure of the MAC key. Replays arriving after disclosure are dropped
+// at the SafePktTest gate and cannot produce a new verification.
 lemma sib1_freshness:
-  "All cell_id m k k0_chain #i #r.
-        SIB1_Received(cell_id, m, MAC(f_prime(k), m)) @ r
-      & SIB1_Verified(cell_id, m, k, k0_chain) @ i
-    ==>
-      (All #s.
-       (SIB1_Sent(cell_id, m, k) @ s ==> s < r))
-    | (Ex #j. GnbCompromised(cell_id) @ j & j < i)"
+  "All rid cell_id m k k0 #s #v.
+       SIB1_Sent(cell_id, m, k) @ s
+     & SIB1_Verified(rid, cell_id, m, k, k0) @ v
+     ==>
+       (All #r. SIB1_Received(rid, cell_id, m, MAC(f_prime(k), m)) @ r
+                & r < v
+                ==>
+                  (All #d. GnbDisclosedKey(k) @ d ==> r < d))
+     | (Ex #c. GnbCompromised(cell_id) @ c & c < v)"
 
 // Compromise isolation: compromising cell_id doesn't affect cell_id2
 lemma sib1_compromise_isolation:
-  "All cell_id cell_id2 m k k0_chain #j #c.
+  "All rid cell_id cell_id2 m k k0_chain #j #c.
      GnbCompromised(cell_id) @ c
-   & SIB1_Verified(cell_id2, m, k, k0_chain) @ j
+   & SIB1_Verified(rid, cell_id2, m, k, k0_chain) @ j
    & not(cell_id = cell_id2)
    ==>
      (Ex #s. SIB1_Sent(cell_id2, m, k) @ s & #s < #j)
@@ -369,9 +386,9 @@ lemma renewal_is_executable:
 // SIB1 verification on a renewed chain is reachable without compromise
 lemma renewed_chain_is_executable:
   exists-trace
-  "( Ex cell_id m k k0_next #i #r.
+  "( Ex rid cell_id m k k0_next #i #r.
        ChainRenewed(cell_id, k0_next) @ r
-     & SIB1_Verified(cell_id, m, k, k0_next) @ i
+     & SIB1_Verified(rid, cell_id, m, k, k0_next) @ i
      & r < i )
   & (All cell_id #c. GnbCompromised(cell_id) @ c ==> F)"
 

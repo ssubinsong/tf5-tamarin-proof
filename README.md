@@ -39,7 +39,7 @@ With Tamarin 1.12.0, the default DFS search can stall on `renewed_chain_is_execu
 | `base_chain_is_executable` | exists-trace | Bootstrap + SIB1 on base chain reachable without renewal |
 | `compromise_enables_forgery` | exists-trace | Sanity: compromise enables forgery |
 | `authentic` | all-traces | Accepted SIB1 was sent by an honest gNB unless the cell is compromised |
-| `sib1_freshness` | all-traces | Every honest send of the accepted SIB1 precedes its reception (no future-replay) |
+| `sib1_freshness` | all-traces | Every accepted SIB1 was received before the MAC key was publicly disclosed; post-disclosure replays are dropped at the safe-packet gate |
 | `sib1_compromise_isolation` | all-traces | SIB1 key compromise does not forge past SIB1s in other cells |
 | `renewal_is_executable` | exists-trace | Honest chain renewal is reachable without compromise |
 | `renewed_chain_is_executable` | exists-trace | SIB1 verification on a renewed chain is reachable without compromise |
