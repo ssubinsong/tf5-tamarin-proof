@@ -48,19 +48,19 @@ rule Gen_Start:
   -->
     [ Gen($cell_id, ~seed, ~seed) ]
 
-// gNB extends the chain by one hash step. !CellNextKey links enable chain traversal.
+// gNB extends the chain by one hash step. !ChainKey links enable chain traversal.
 rule Gen_Step:
     [ Gen(cell_id, seed, curr) ]
-  --[ IsChainKey(f(curr)) ]->
+  --[ IsChainKey(cell_id, f(curr)) ]->
     [ Gen(cell_id, seed, f(curr))
-    , !CellNextKey(cell_id, curr, f(curr))
+    , !ChainKey(cell_id, curr, f(curr))
     ]
 
 // gNB decides to stop chain generation.
-// At least one Gen_Step is guaranteed by GnbSend requiring !CellNextKey(k_prev, k_next).
+// At least one Gen_Step is guaranteed by GnbSend requiring !ChainKey(k_prev, k_next).
 rule Gen_Stop:
     [ Gen(cell_id, seed, k0), Fr(~t0) ]
-  --[ GnbDisclosedKey(k0) ]->
+  --[ GnbDisclosedKey(cell_id, k0) ]->
     [ GnbState(cell_id, k0, ~t0, $tesla_params)
     , !BootstrapReady(cell_id, k0, ~t0, $tesla_params) ]
 
@@ -110,8 +110,8 @@ rule UeBootstrapVerify:
 rule GnbSend:
   let tag = MAC(f_prime(k_next), m)
       msg = <m, tag> in
-    [ GnbState(cell_id, k_prev, t0, tp), !CellNextKey(cell_id, k_next, k_prev), Fr(m) ]
-  --[ GnbDisclosedKey(k_prev)
+    [ GnbState(cell_id, k_prev, t0, tp), !ChainKey(cell_id, k_next, k_prev), Fr(m) ]
+  --[ GnbDisclosedKey(cell_id, k_prev)
     , SIB1_Sent(cell_id, m, k_next, tag)
     , IntervalExpired(cell_id, k_prev)
     ]->
@@ -145,10 +145,10 @@ rule UeCheckAuth0:
     [ CheckAuthLoop(loopId, k, args) ]
 
 // Verification loop step: advance one hash towards k0
-// !CellNextKey premise constrains walk to cell_id's chain, giving identity binding.
+// !ChainKey premise constrains walk to cell_id's chain, giving identity binding.
 rule UeCheckAuth:
   let args = <k0, cell_id, kOrig, msg, rid> in
-    [ CheckAuthLoop(loopId, k, args), !CellNextKey(cell_id, k, f(k)) ]
+    [ CheckAuthLoop(loopId, k, args), !ChainKey(cell_id, k, f(k)) ]
   --[ CheckLoop(loopId, k, args, kOrig), Loop(loopId, k, kOrig) ]->
     [ CheckAuthLoop(loopId, f(k), args) ]
 
@@ -230,9 +230,9 @@ restriction GnbKeyNotExpired:
 // the tag is not a MAC term the restriction is vacuous (verification will
 // also fail downstream, so nothing accepted).
 restriction SafePktTest:
-  "All k m rid #s #d.
+  "All cell_id k m rid #s #d.
      SafePktTest(rid, MAC(f_prime(k), m)) @ s
-   & GnbDisclosedKey(k) @ d
+   & GnbDisclosedKey(cell_id, k) @ d
    ==> s < d"
 
 // --- Proof infrastructure (order is load-bearing) ---
@@ -245,26 +245,28 @@ lemma loop_origin [reuse, use_induction]:
      Ex #j #r. CheckStart(lid, kOrig, args) @ j & j < i
               & CheckLoop(lid, kOrig, args, kOrig) @ r & j < r & r < i"
 
-// Chain completeness: all keys between two visited loop points are IsChainKeys
+// Chain completeness: all keys between two visited loop points are ChainKeys
 lemma loopchain [reuse, use_induction]:
-  "All lid k k2 kOrig1 #i #j #l.
+  "All cell_id lid k k2 kOrig1 #i #j #l.
      Loop(lid, k2, kOrig1) @ j & Loop(lid, k, kOrig1) @ i
-   & IsChainKey(k2) @ l & k << k2 & #i < #j
-   ==> Ex #j2. IsChainKey(k) @ j2"
+   & IsChainKey(cell_id, k2) @ l & k << k2 & #i < #j
+   ==> Ex #j2. IsChainKey(cell_id, k) @ j2"
 
-// Each chain key is generated exactly once (no cross-chain collision)
+// Each chain key is generated exactly once
 lemma chain_keys_unique [reuse, use_induction]:
-  "All k #i #j. IsChainKey(k) @ i & IsChainKey(k) @ j ==> #i = #j"
+  "All cell_id1 cell_id2 k #i #j.
+     IsChainKey(cell_id1, k) @ i & IsChainKey(cell_id2, k) @ j
+     ==> #i = #j & cell_id1 = cell_id2"
 
 // The adversary can only learn chain keys after they have been disclosed
 lemma knows_only_expired_chain_keys [reuse, use_induction]:
-  "All k #i #j. IsChainKey(k) @ i & KU(k) @ j
-   ==> Ex #e. GnbDisclosedKey(k) @ e & e < j"
+  "All cell_id k #i #j. IsChainKey(cell_id, k) @ i & KU(k) @ j
+   ==> Ex #e. GnbDisclosedKey(cell_id, k) @ e & e < j"
 
 // MAC knowledge implies key disclosure or legitimate send
 lemma knows [reuse, use_induction]:
-  "All k m #i #j. IsChainKey(k) @ i & KU(MAC(f_prime(k), m)) @ j
-   ==> (Ex #e. GnbDisclosedKey(k) @ e & e < j)
+  "All cell_id k m #i #j. IsChainKey(cell_id, k) @ i & KU(MAC(f_prime(k), m)) @ j
+   ==> (Ex #e. GnbDisclosedKey(cell_id, k) @ e & e < j)
      | (Ex cell_id tag #s. SIB1_Sent(cell_id, m, k, tag) @ s & s < j)"
 
 // --- Bootstrap (IBS initial key distribution) ---
