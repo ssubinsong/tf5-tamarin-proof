@@ -85,11 +85,19 @@ rule GnbBootstrapSigExpire:
   --[ SigExpire(cell_id, k0, t0, tp, sig_instance) ]->
     [ ]
 
-// UE receives SIB-TF5 and verifies the IBS signature.
+// UE receives SIB-TF5.
+rule UeBootstrapRecv:
+    let msg = <cell_id, k0, t0, tesla_params, sig_instance, key_validity>
+    in
+    [ In(<msg, sig>) ]
+    --[ SIB_TF5_Received(msg, sig) ]->
+    [ BootstrapVerify(msg, sig) ]
+
+// UE verifies the IBS signature of SIB-TF5.
 rule UeBootstrapVerify:
   let msg = <cell_id, k0, t0, tesla_params, sig_instance, key_validity>
   in
-    [ !MPK(mpk), In(<msg, sig>) ]
+    [ !MPK(mpk), BootstrapVerify(msg, sig) ]
   --[ Eq(ibs_verify(mpk, cell_id, msg, sig), true),
       SigNotExpired(cell_id, k0, t0, tesla_params, sig_instance),
       GnbKeyNotExpired(cell_id, key_validity),
@@ -278,14 +286,13 @@ lemma bootstrap_authentic:
 
 // Bootstrap freshness: stale bootstrap with expired signature is rejected
 lemma bootstrap_freshness:
-  "All cell_id key_validity k0 t0 tp sig_instance #j.
-     SIB_TF5_Verified(cell_id, key_validity, k0, t0, tp, sig_instance) @ j
-   ==>
-     (Ex #k.
-        SIB_TF5_Sent(cell_id, k0, t0, tp, sig_instance) @ k
-      & k < j
-      & (All #l. SigExpire(cell_id, k0, t0, tp, sig_instance) @ l ==> j < l))
-   | (Ex #c. GnbCompromised(cell_id) @ c & c < j)"
+   "All cell_id k0 t0 tesla_params sig_instance key_validity sig #r #v #n.
+        SIB_TF5_Received(<cell_id, k0, t0, tesla_params, sig_instance, key_validity>, sig) @ r
+      & SIB_TF5_Verified(cell_id, key_validity, k0, t0, tesla_params, sig_instance) @ v
+      & SigExpire(cell_id, k0, t0, tesla_params, sig_instance) @ n
+      ==>
+         v < n
+       | Ex #c. GnbCompromised(cell_id) @ c & c < v"
 
 // Stale gNB signing keys are rejected
 lemma stale_gnb_signing_key_rejected:
