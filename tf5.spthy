@@ -106,15 +106,15 @@ rule UeBootstrapVerify:
 
 // --- Sending ---
 
-// gNB sends SIB1: discloses k_prev, sends message MAC'd with f_prime(k_next)
+// gNB sends SIB1: discloses k_prev, sends message MAC'd with f_prime(k)
 rule GnbSend:
-  let tag = MAC(f_prime(k_next), ~m)
+  let tag = MAC(f_prime(k), ~m)
       msg = <~m, tag> in
-    [ GnbState(cid, k_prev), !ChainKey(<cid, cs>, k_next, k_prev), Fr(~m), Fr(~sid) ]
+    [ GnbState(cid, k_prev), !ChainKey(<cid, cs>, k, k_prev), Fr(~m), Fr(~sid) ]
   --[ IntervalExpired(<cid, cs>, k_prev)
-    , SIB1_Sent(cid, ~m, k_next, tag)
+    , SIB1_Sent(cid, ~m, k, tag)
     ]->
-    [ GnbState(cid, k_next), Out(k_prev), Out(msg) ]
+    [ GnbState(cid, k), Out(k_prev), Out(msg) ]
 
 // --- Receiving — loop-based verification (Cremers style) ---
 
