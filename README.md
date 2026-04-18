@@ -31,7 +31,7 @@ With Tamarin 1.12.0, the default DFS search can stall on `renewed_chain_is_execu
 | `knows_only_expired_chain_keys` | reuse, induction | Adversary learns chain keys only after disclosure |
 | `knows` | reuse, induction | Adversary's knowledge is bounded by compromise |
 | `bootstrap_is_executable` | exists-trace | Sanity: IBS bootstrap path is reachable |
-| `bootstrap_parameter_agreement` | all-traces | UE and gNB agree on TESLA parameters at bootstrap |
+| `bootstrap_authentic` | all-traces | Accepted bootstrap messages were sent by an honest gNB unless the cell is compromised |
 | `bootstrap_freshness` | all-traces | Stale bootstrap messages with expired signatures are rejected |
 | `stale_gnb_signing_key_rejected` | all-traces | Bootstraps using expired gNB signing keys are rejected |
 | `bootstrap_compromise_bounded` | all-traces | IBS compromise does not retroactively forge bootstraps |

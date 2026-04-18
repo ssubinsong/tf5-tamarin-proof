@@ -268,8 +268,8 @@ lemma bootstrap_is_executable:
       SIB_TF5_Verified(cell_id, key_validity, k0, t0, tp, sig_instance) @ j
     & (All #c. GnbCompromised(cell_id) @ c ==> F)"
 
-// Parameter agreement: UE accepts only TESLA params that gNB actually sent
-lemma bootstrap_parameter_agreement:
+// Bootstrap signature authenticity and integrity
+lemma bootstrap_authentic:
   "All cell_id key_validity k0 t0 tp sig_instance #j.
      SIB_TF5_Verified(cell_id, key_validity, k0, t0, tp, sig_instance) @ j
    ==>
