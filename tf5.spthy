@@ -24,19 +24,19 @@ rule PKG_Setup:
 
 // PKG issues an identity-based signing key to a gNB identified by cell ID
 rule PKG_Extract:
-    [ !MSK(~msk), Fr(~key_validity) ]
-  --[ GnbKeyExtract($cid, ~key_validity) ]->
-    [ !GnbSignKey($cid, ibs_extract(~msk, $cid), ~key_validity),
-      GnbKeyValidityTimer($cid, ~key_validity)]
+    [ !MSK(~msk), Fr(~exp) ]
+  --[ GnbKeyExtract($cid, ~exp) ]->
+    [ !GnbSignKey($cid, ibs_extract(~msk, $cid), ~exp),
+      GnbKeyValidityTimer($cid, ~exp)]
 
 rule GnbKeyExpire:
-    [ GnbKeyValidityTimer(cid, key_validity) ]
-  --[ GnbKeyExpired(cid, key_validity) ]->
+    [ GnbKeyValidityTimer(cid, exp) ]
+  --[ GnbKeyExpired(cid, exp) ]->
     [ ]
 
 // Adversary compromises a gNB's signing key (key leakage)
 rule GnbCompromise:
-    [ !GnbSignKey(cid, sk_id, key_validity) ]
+    [ !GnbSignKey(cid, sk_id, exp) ]
   --[ GnbCompromised(cid) ]->
     [ Out(sk_id) ]
 
@@ -69,11 +69,11 @@ rule Gen_Stop:
 // gNB signs and broadcasts SIB-TF5 containing TESLA params (k0, t0) via IBS.
 // ~sig_instance acts as a per-signature freshness nonce bound into the signed message.
 rule GnbBootstrapSend:
-  let bootstrap_msg = <cid, k0, t0, tesla_params, ~sig_instance, key_validity>
+  let bootstrap_msg = <cid, k0, t0, tesla_params, ~sig_instance, exp>
       sig = ibs_sign(sk_id, bootstrap_msg)
   in
     [ !BootstrapReady(cid, k0, t0, tesla_params)
-    , !GnbSignKey(cid, sk_id, key_validity), Fr(~sig_instance)
+    , !GnbSignKey(cid, sk_id, exp), Fr(~sig_instance)
     ]
   --[ SIB_TF5_Sent(cid, k0, t0, tesla_params, ~sig_instance) ]->
     [ Out(<bootstrap_msg, sig>)
@@ -87,7 +87,7 @@ rule GnbBootstrapSigExpire:
 
 // UE receives SIB-TF5.
 rule UeBootstrapRecv:
-    let msg = <cid, k0, t0, tesla_params, sig_instance, key_validity>
+    let msg = <cid, k0, t0, tesla_params, sig_instance, exp>
     in
     [ In(<msg, sig>) ]
     --[ SIB_TF5_Received(msg, sig) ]->
@@ -95,13 +95,13 @@ rule UeBootstrapRecv:
 
 // UE verifies the IBS signature of SIB-TF5.
 rule UeBootstrapVerify:
-  let msg = <cid, k0, t0, tesla_params, sig_instance, key_validity>
+  let msg = <cid, k0, t0, tesla_params, sig_instance, exp>
   in
     [ !MPK(mpk), BootstrapVerify(msg, sig) ]
   --[ Eq(ibs_verify(mpk, cid, msg, sig), true),
       SigNotExpired(cid, k0, t0, tesla_params, sig_instance),
-      GnbKeyNotExpired(cid, key_validity),
-      SIB_TF5_Verified(cid, key_validity, k0, t0, tesla_params, sig_instance) ]->
+      GnbKeyNotExpired(cid, exp),
+      SIB_TF5_Verified(cid, exp, k0, t0, tesla_params, sig_instance) ]->
     [ !Receiver(cid, k0) ]
 
 // --- Sending ---
@@ -219,9 +219,9 @@ restriction SigNotExpired:
    ==> s < e"
 
 restriction GnbKeyNotExpired:
-  "All cid key_validity #s #e.
-  GnbKeyNotExpired(cid, key_validity) @ s
-  & GnbKeyExpired(cid, key_validity) @ e
+  "All cid exp #s #e.
+  GnbKeyNotExpired(cid, exp) @ s
+  & GnbKeyExpired(cid, exp) @ e
   ==> s < e"
 
 // TESLA safe-packet test: a UE-side assertion emitted at UeRecvConfirm
@@ -274,23 +274,23 @@ lemma knows [reuse, use_induction]:
 // IBS bootstrap path is executable
 lemma bootstrap_is_executable:
   exists-trace
-  "Ex cid key_validity k0 t0 tp sig_instance #j.
-      SIB_TF5_Verified(cid, key_validity, k0, t0, tp, sig_instance) @ j
+  "Ex cid exp k0 t0 tp sig_instance #j.
+      SIB_TF5_Verified(cid, exp, k0, t0, tp, sig_instance) @ j
     & (All #c. GnbCompromised(cid) @ c ==> F)"
 
 // Bootstrap signature authenticity and integrity
 lemma bootstrap_authentic:
-  "All cid key_validity k0 t0 tp sig_instance #j.
-     SIB_TF5_Verified(cid, key_validity, k0, t0, tp, sig_instance) @ j
+  "All cid exp k0 t0 tp sig_instance #j.
+     SIB_TF5_Verified(cid, exp, k0, t0, tp, sig_instance) @ j
    ==>
      (Ex #k. SIB_TF5_Sent(cid, k0, t0, tp, sig_instance) @ k & k < j)
    | (Ex #c. GnbCompromised(cid) @ c & c < j)"
 
 // Bootstrap freshness: stale bootstrap with expired signature is rejected
 lemma bootstrap_freshness:
-   "All cid k0 t0 tesla_params sig_instance key_validity sig #r #v #n.
-        SIB_TF5_Received(<cid, k0, t0, tesla_params, sig_instance, key_validity>, sig) @ r
-      & SIB_TF5_Verified(cid, key_validity, k0, t0, tesla_params, sig_instance) @ v
+   "All cid k0 t0 tesla_params sig_instance exp sig #r #v #n.
+        SIB_TF5_Received(<cid, k0, t0, tesla_params, sig_instance, exp>, sig) @ r
+      & SIB_TF5_Verified(cid, exp, k0, t0, tesla_params, sig_instance) @ v
       & SigExpire(cid, k0, t0, tesla_params, sig_instance) @ n
       ==>
          v < n
@@ -298,19 +298,19 @@ lemma bootstrap_freshness:
 
 // Stale gNB signing keys are rejected
 lemma stale_gnb_signing_key_rejected:
-  "All cid k0 t0 tp sig_instance key_validity #j.
-     SIB_TF5_Verified(cid, key_validity, k0, t0, tp, sig_instance) @ j
+  "All cid k0 t0 tp sig_instance exp #j.
+     SIB_TF5_Verified(cid, exp, k0, t0, tp, sig_instance) @ j
    ==>
-     (Ex #k. GnbKeyExtract(cid, key_validity) @ k
+     (Ex #k. GnbKeyExtract(cid, exp) @ k
            & k < j
-           & (All #l. GnbKeyExpired(cid, key_validity) @ l ==> j < l))
+           & (All #l. GnbKeyExpired(cid, exp) @ l ==> j < l))
    | (Ex #c. GnbCompromised(cid) @ c & c < j)"
 
 // Compromise isolation (bootstrap)
 lemma bootstrap_compromise_bounded:
-  "All cid cid2 key_validity k0 t0 tp sig_instance #j #c.
+  "All cid cid2 exp k0 t0 tp sig_instance #j #c.
      GnbCompromised(cid) @ c
-   & SIB_TF5_Verified(cid2, key_validity, k0, t0, tp, sig_instance) @ j
+   & SIB_TF5_Verified(cid2, exp, k0, t0, tp, sig_instance) @ j
    & not(cid = cid2)
    ==>
      (Ex #s. SIB_TF5_Sent(cid2, k0, t0, tp, sig_instance) @ s & #s < #j)
@@ -329,8 +329,8 @@ lemma tesla_is_executable:
 // Full base-chain lifecycle is executable (bootstrap -> SIB1, no renewal)
 lemma base_chain_is_executable:
   exists-trace
-  "( Ex rid cid key_validity m k k0 t0 tp sig_instance #i #b.
-    SIB_TF5_Verified(cid, key_validity, k0, t0, tp, sig_instance) @ b
+  "( Ex rid cid exp m k k0 t0 tp sig_instance #i #b.
+    SIB_TF5_Verified(cid, exp, k0, t0, tp, sig_instance) @ b
     & SIB1_Verified(rid, cid, m, k, k0) @ i
     & b < i
     & (All #r k0_next. ChainRenewed(cid, k0_next) @ r ==> i < r)
@@ -399,8 +399,8 @@ lemma renewal_without_rebootstrap:
   "Ex cid k0_next #r.
       ChainRenewed(cid, k0_next) @ r
     & (All #c. GnbCompromised(cid) @ c ==> F)
-    & (All key_validity t0 tp sig_instance #b.
-        SIB_TF5_Verified(cid, key_validity, k0_next, t0, tp, sig_instance) @ b
+    & (All exp t0 tp sig_instance #b.
+        SIB_TF5_Verified(cid, exp, k0_next, t0, tp, sig_instance) @ b
         ==> F)"
 
 // Renewed chain commitment is authentic to the gNB
