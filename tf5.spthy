@@ -26,7 +26,7 @@ rule PKG_Setup:
 rule PKG_Extract:
     [ !MSK(~msk), Fr(~exp) ]
   --[ GnbKeyExtract($cid, ~exp) ]->
-    [ !GnbSignKey($cid, ibs_extract(~msk, $cid), ~exp),
+    [ !GnbSignKey($cid, ibs_extract(~msk, <$cid, ~exp>), ~exp),
       GnbKeyValidityTimer($cid, ~exp)]
 
 rule GnbKeyExpire:
@@ -37,7 +37,7 @@ rule GnbKeyExpire:
 // Adversary compromises a gNB's signing key (key leakage)
 rule GnbCompromise:
     [ !GnbSignKey(cid, sk_id, exp) ]
-  --[ GnbCompromised(cid) ]->
+  --[ GnbCompromised(cid, exp) ]->
     [ Out(sk_id) ]
 
 // --- Chain setup phase ---
@@ -98,7 +98,7 @@ rule UeBootstrapVerify:
   let msg = <cid, k0, t0, tesla_params, t_sign, exp>
   in
     [ !MPK(mpk), BootstrapVerify(msg, sig) ]
-  --[ Eq(ibs_verify(mpk, cid, msg, sig), true),
+  --[ Eq(ibs_verify(mpk, <cid, exp>, msg, sig), true),
       SigNotExpired(cid, k0, t0, tesla_params, t_sign),
       GnbKeyNotExpired(cid, exp),
       SIB_TF5_Verified(cid, exp, k0, t0, tesla_params, t_sign) ]->
@@ -275,7 +275,7 @@ lemma bootstrap_is_executable:
   exists-trace
   "Ex cid exp k0 t0 tp t_sign #j.
       SIB_TF5_Verified(cid, exp, k0, t0, tp, t_sign) @ j
-    & (All #c. GnbCompromised(cid) @ c ==> F)"
+    & (All #c. GnbCompromised(cid, exp) @ c ==> F)"
 
 // Bootstrap signature authenticity and integrity
 lemma bootstrap_authentic:
@@ -283,7 +283,7 @@ lemma bootstrap_authentic:
      SIB_TF5_Verified(cid, exp, k0, t0, tp, t_sign) @ j
    ==>
      (Ex #k. SIB_TF5_Sent(cid, k0, t0, tp, t_sign) @ k & k < j)
-   | (Ex #c. GnbCompromised(cid) @ c & c < j)"
+   | (Ex #c. GnbCompromised(cid, exp) @ c & c < j)"
 
 // Bootstrap freshness: stale bootstrap with expired signature is rejected
 lemma bootstrap_freshness:
@@ -293,7 +293,7 @@ lemma bootstrap_freshness:
       & SigExpire(cid, k0, t0, tesla_params, t_sign) @ n
       ==>
          v < n
-       | Ex #c. GnbCompromised(cid) @ c & c < v"
+       | Ex #c. GnbCompromised(cid, exp) @ c & c < v"
 
 // Stale gNB signing keys are rejected
 lemma stale_gnb_signing_key_rejected:
@@ -303,17 +303,17 @@ lemma stale_gnb_signing_key_rejected:
      (Ex #k. GnbKeyExtract(cid, exp) @ k
            & k < j
            & (All #l. GnbKeyExpired(cid, exp) @ l ==> j < l))
-   | (Ex #c. GnbCompromised(cid) @ c & c < j)"
+   | (Ex #c. GnbCompromised(cid, exp) @ c & c < j)"
 
 // Compromise isolation (bootstrap)
 lemma bootstrap_compromise_bounded:
   "All cid cid2 exp k0 t0 tp t_sign #j #c.
-     GnbCompromised(cid) @ c
+     GnbCompromised(cid, exp) @ c
    & SIB_TF5_Verified(cid2, exp, k0, t0, tp, t_sign) @ j
    & not(cid = cid2)
    ==>
      (Ex #s. SIB_TF5_Sent(cid2, k0, t0, tp, t_sign) @ s & #s < #j)
-   | (Ex #c2. GnbCompromised(cid2) @ c2 & c2 < j)"
+   | (Ex exp2 #c2. GnbCompromised(cid2, exp2) @ c2 & c2 < j)"
 
 // --- TESLA SIB1 authentication ---
 
@@ -323,7 +323,7 @@ lemma tesla_is_executable:
   "( Ex rid cid m k k0_chain tag #i #j.
       SIB1_Verified(rid, cid, m, k, k0_chain) @ i
      & SIB1_Sent(cid, m, k, tag) @ j )
-  & (All cid #r. GnbCompromised(cid) @ r ==> F)"
+  & (All cid exp #r. GnbCompromised(cid, exp) @ r ==> F)"
 
 // Full base-chain lifecycle is executable (bootstrap -> SIB1, no renewal)
 lemma base_chain_is_executable:
@@ -334,14 +334,14 @@ lemma base_chain_is_executable:
     & b < i
     & (All #r k0_next. ChainRenewed(cid, k0_next) @ r ==> i < r)
     )
-  & (All cid #c. GnbCompromised(cid) @ c ==> F)"
+  & (All cid exp #c. GnbCompromised(cid, exp) @ c ==> F)"
 
 // Adversary model validation: compromise enables forgery
 lemma compromise_enables_forgery:
   exists-trace
-  "Ex rid cid m k k0_chain #v #c.
+  "Ex rid cid m k k0_chain exp #v #c.
      SIB1_Verified(rid, cid, m, k, k0_chain) @ v
-   & GnbCompromised(cid) @ c
+   & GnbCompromised(cid, exp) @ c
    & (All tag #s. SIB1_Sent(cid, m, k, tag) @ s ==> F)"
 
 // Accepted SIB1 was sent by an honest gNB unless the cell was compromised
@@ -352,7 +352,7 @@ lemma authentic:
     ==>
       (Ex tag #s.
        (SIB1_Sent(cid, m, k, tag) @ s & s < r))
-    | (Ex #j. GnbCompromised(cid) @ j & j < i)"
+    | (Ex exp #j. GnbCompromised(cid, exp) @ j & j < i)"
 
 lemma sib1_freshness:
   "All rid cid m k k0 #r #s #v #n.
@@ -362,17 +362,17 @@ lemma sib1_freshness:
      & IntervalExpired(cid, k) @ n
      ==>
         r < n
-      | Ex #c. GnbCompromised(cid) @ c & c < v"
+      | Ex exp #c. GnbCompromised(cid, exp) @ c & c < v"
 
 // Compromise isolation: compromising cid doesn't affect cid2
 lemma sib1_compromise_isolation:
-  "All rid cid cid2 m k k0_chain #j #c.
-     GnbCompromised(cid) @ c
+  "All rid cid cid2 exp m k k0_chain #j #c.
+     GnbCompromised(cid, exp) @ c
    & SIB1_Verified(rid, cid2, m, k, k0_chain) @ j
    & not(cid = cid2)
    ==>
      (Ex tag #s. SIB1_Sent(cid2, m, k, tag) @ s & #s < #j)
-   | (Ex #c2. GnbCompromised(cid2) @ c2 & c2 < j)"
+   | (Ex exp2 #c2. GnbCompromised(cid2, exp2) @ c2 & c2 < j)"
 
 // --- Chain renewal ---
 
@@ -381,7 +381,7 @@ lemma renewal_is_executable:
   exists-trace
   "Ex cid k0_next #r.
       ChainRenewed(cid, k0_next) @ r
-    & (All #c. GnbCompromised(cid) @ c ==> F)"
+    & (All exp #c. GnbCompromised(cid, exp) @ c ==> F)"
 
 // SIB1 verification on a renewed chain is reachable without compromise
 lemma renewed_chain_is_executable:
@@ -390,14 +390,14 @@ lemma renewed_chain_is_executable:
        ChainRenewed(cid, k0_next) @ r
      & SIB1_Verified(rid, cid, m, k, k0_next) @ i
      & r < i )
-  & (All cid #c. GnbCompromised(cid) @ c ==> F)"
+  & (All cid exp #c. GnbCompromised(cid, exp) @ c ==> F)"
 
 // Chain renewal proceeds without re-bootstrapping on the successor chain
 lemma renewal_without_rebootstrap:
   exists-trace
   "Ex cid k0_next #r.
       ChainRenewed(cid, k0_next) @ r
-    & (All #c. GnbCompromised(cid) @ c ==> F)
+    & (All exp #c. GnbCompromised(cid, exp) @ c ==> F)
     & (All exp t0 tp t_sign #b.
         SIB_TF5_Verified(cid, exp, k0_next, t0, tp, t_sign) @ b
         ==> F)"
@@ -408,6 +408,6 @@ lemma renewal_commitment_authenticity:
      ChainRenewed(cid, k0_next) @ i
    ==>
      (Ex k0 #j. NextChainPrepared(cid, k0, k0_next) @ j & j < i)
-   | (Ex #c. GnbCompromised(cid) @ c & c < i)"
+   | (Ex exp #c. GnbCompromised(cid, exp) @ c & c < i)"
 
 end
