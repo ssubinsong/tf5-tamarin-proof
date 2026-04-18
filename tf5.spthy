@@ -60,7 +60,7 @@ rule Gen_Step:
 // At least one Gen_Step is guaranteed by GnbSend requiring !ChainKey(k_prev, k_next).
 rule Gen_Stop:
     [ Gen(cid, seed, k0), Fr(~t0) ]
-  --[ GnbDisclosedKey(cid, k0) ]->
+  --[ KeyDisclosed(cid, k0) ]->
     [ GnbState(cid, k0, ~t0, $tesla_params)
     , !BootstrapReady(cid, k0, ~t0, $tesla_params) ]
 
@@ -111,7 +111,7 @@ rule GnbSend:
   let tag = MAC(f_prime(k_next), ~m)
       msg = <~m, tag> in
     [ GnbState(cid, k_prev, t0, tp), !ChainKey(cid, k_next, k_prev), Fr(~m), Fr(~sid) ]
-  --[ GnbDisclosedKey(cid, k_prev)
+  --[ KeyDisclosed(cid, k_prev)
     , SIB1_Sent(cid, ~m, k_next, tag)
     , IntervalExpired(cid, k_prev)
     ]->
@@ -232,7 +232,7 @@ restriction GnbKeyNotExpired:
 restriction SafePktTest:
   "All cid k m rid #s #d.
      SafePktTest(rid, MAC(f_prime(k), m)) @ s
-   & GnbDisclosedKey(cid, k) @ d
+   & KeyDisclosed(cid, k) @ d
    ==> s < d"
 
 // --- Proof infrastructure (order is load-bearing) ---
@@ -261,12 +261,12 @@ lemma chain_keys_unique [reuse, use_induction]:
 // The adversary can only learn chain keys after they have been disclosed
 lemma knows_only_expired_chain_keys [reuse, use_induction]:
   "All cid k #i #j. ChainStep(cid, k) @ i & KU(k) @ j
-   ==> Ex #e. GnbDisclosedKey(cid, k) @ e & e < j"
+   ==> Ex #e. KeyDisclosed(cid, k) @ e & e < j"
 
 // MAC knowledge implies key disclosure or legitimate send
 lemma knows [reuse, use_induction]:
   "All cid k m #i #j. ChainStep(cid, k) @ i & KU(MAC(f_prime(k), m)) @ j
-   ==> (Ex #e. GnbDisclosedKey(cid, k) @ e & e < j)
+   ==> (Ex #e. KeyDisclosed(cid, k) @ e & e < j)
      | (Ex cid tag #s. SIB1_Sent(cid, m, k, tag) @ s & s < j)"
 
 // --- Bootstrap (IBS initial key distribution) ---
