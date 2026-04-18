@@ -46,21 +46,21 @@ rule GnbCompromise:
 rule Gen_Start:
     [ Fr(~seed) ]
   -->
-    [ Gen($cid, ~seed, ~seed) ]
+    [ Gen(<$cid, ~seed>, ~seed) ]
 
 // gNB extends the chain by one hash step. !ChainKey links enable chain traversal.
 rule Gen_Step:
-    [ Gen(cid, seed, curr) ]
-  --[ ChainedKey(cid, f(curr)) ]->
-    [ Gen(cid, seed, f(curr))
-    , !ChainKey(cid, curr, f(curr))
+    [ Gen(<cid, seed>, curr) ]
+  --[ ChainedKey(<cid, seed>, f(curr)) ]->
+    [ Gen(<cid, seed>, f(curr))
+    , !ChainKey(<cid, seed>, curr, f(curr))
     ]
 
 // gNB decides to stop chain generation.
 // At least one Gen_Step is guaranteed by GnbSend requiring !ChainKey(k_prev, k_next).
 rule Gen_Stop:
-    [ Gen(cid, seed, k0), Fr(~t0) ]
-  --[ IntervalExpired(cid, k0) ]->
+    [ Gen(<cid, seed>, k0), Fr(~t0) ]
+  --[ IntervalExpired(<cid, seed>, k0) ]->
     [ GnbState(cid, k0, ~t0, $tesla_params)
     , !BootstrapReady(cid, k0, ~t0, $tesla_params) ]
 
@@ -110,8 +110,8 @@ rule UeBootstrapVerify:
 rule GnbSend:
   let tag = MAC(f_prime(k_next), ~m)
       msg = <~m, tag> in
-    [ GnbState(cid, k_prev, t0, tp), !ChainKey(cid, k_next, k_prev), Fr(~m), Fr(~sid) ]
-  --[ IntervalExpired(cid, k_prev)
+    [ GnbState(cid, k_prev, t0, tp), !ChainKey(<cid, cs>, k_next, k_prev), Fr(~m), Fr(~sid) ]
+  --[ IntervalExpired(<cid, cs>, k_prev)
     , SIB1_Sent(cid, ~m, k_next, tag)
     ]->
     [ GnbState(cid, k_next, t0, tp), Out(k_prev), Out(msg) ]
@@ -147,7 +147,7 @@ rule UeCheckAuth0:
 // !ChainKey premise constrains walk to cid's chain, giving identity binding.
 rule UeCheckAuth:
   let args = <k0, cid, kOrig, msg, rid> in
-    [ CheckAuthLoop(loopId, k, args), !ChainKey(cid, k, f(k)) ]
+    [ CheckAuthLoop(loopId, k, args), !ChainKey(<cid, cs>, k, f(k)) ]
   --[ CheckLoop(loopId, k, args, kOrig), Loop(loopId, k, kOrig) ]->
     [ CheckAuthLoop(loopId, f(k), args) ]
 
@@ -229,9 +229,9 @@ restriction GnbKeyNotExpired:
 // the tag is not a MAC term the restriction is vacuous (verification will
 // also fail downstream, so nothing accepted).
 restriction SafePktTest:
-  "All cid k m rid #s #d.
+  "All cid cs k m rid #s #d.
      SafePktTest(rid, MAC(f_prime(k), m)) @ s
-   & IntervalExpired(cid, k) @ d
+   & IntervalExpired(<cid, cs>, k) @ d
    ==> s < d"
 
 // --- Proof infrastructure (order is load-bearing) ---
@@ -246,26 +246,26 @@ lemma loop_origin [reuse, use_induction]:
 
 // Chain completeness: all keys between two visited loop points are ChainKeys
 lemma loopchain [reuse, use_induction]:
-  "All cid lid k k2 kOrig1 #i #j #l.
+  "All cid cs lid k k2 kOrig1 #i #j #l.
      Loop(lid, k2, kOrig1) @ j & Loop(lid, k, kOrig1) @ i
-   & ChainedKey(cid, k2) @ l & k << k2 & #i < #j
-   ==> Ex #j2. ChainedKey(cid, k) @ j2"
+   & ChainedKey(<cid, cs>, k2) @ l & k << k2 & #i < #j
+   ==> Ex #j2. ChainedKey(<cid, cs>, k) @ j2"
 
 // Each chain key is generated exactly once
 lemma chain_keys_unique [reuse, use_induction]:
-  "All cid1 cid2 k #i #j.
-     ChainedKey(cid1, k) @ i & ChainedKey(cid2, k) @ j
+  "All cid1 cs1 cid2 cs2 k #i #j.
+     ChainedKey(<cid1, cs1>, k) @ i & ChainedKey(<cid2, cs2>, k) @ j
      ==> #i = #j & cid1 = cid2"
 
 // The adversary can only learn chain keys after they have been disclosed
 lemma knows_only_expired_chain_keys [reuse, use_induction]:
-  "All cid k #i #j. ChainedKey(cid, k) @ i & KU(k) @ j
-   ==> Ex #e. IntervalExpired(cid, k) @ e & e < j"
+  "All cid cs k #i #j. ChainedKey(<cid, cs>, k) @ i & KU(k) @ j
+   ==> Ex #e. IntervalExpired(<cid, cs>, k) @ e & e < j"
 
 // MAC knowledge implies key disclosure or legitimate send
 lemma knows [reuse, use_induction]:
-  "All cid k m #i #j. ChainedKey(cid, k) @ i & KU(MAC(f_prime(k), m)) @ j
-   ==> (Ex #e. IntervalExpired(cid, k) @ e & e < j)
+  "All cid cs k m #i #j. ChainedKey(<cid, cs>, k) @ i & KU(MAC(f_prime(k), m)) @ j
+   ==> (Ex #e. IntervalExpired(<cid, cs>, k) @ e & e < j)
      | (Ex cid tag #s. SIB1_Sent(cid, m, k, tag) @ s & s < j)"
 
 // --- Bootstrap (IBS initial key distribution) ---
@@ -355,11 +355,11 @@ lemma authentic:
     | (Ex exp #j. GnbCompromised(cid, exp) @ j & j < i)"
 
 lemma sib1_freshness:
-  "All rid cid m k k0 #r #s #v #n.
+  "All rid cid cs m k k0 #r #s #v #n.
        SIB1_Received(rid, cid, m, MAC(f_prime(k), m)) @ r
      & SafePktTest(rid, MAC(f_prime(k), m)) @ s
      & SIB1_Verified(rid, cid, m, k, k0) @ v
-     & IntervalExpired(cid, k) @ n
+     & IntervalExpired(<cid, cs>, k) @ n
      ==>
         r < n
       | Ex exp #c. GnbCompromised(cid, exp) @ c & c < v"
