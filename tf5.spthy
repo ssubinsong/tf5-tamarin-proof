@@ -51,7 +51,7 @@ rule Gen_Start:
 // gNB extends the chain by one hash step. !ChainKey links enable chain traversal.
 rule Gen_Step:
     [ Gen(cid, seed, curr) ]
-  --[ ChainStep(cid, f(curr)) ]->
+  --[ ChainedKey(cid, f(curr)) ]->
     [ Gen(cid, seed, f(curr))
     , !ChainKey(cid, curr, f(curr))
     ]
@@ -249,23 +249,23 @@ lemma loop_origin [reuse, use_induction]:
 lemma loopchain [reuse, use_induction]:
   "All cid lid k k2 kOrig1 #i #j #l.
      Loop(lid, k2, kOrig1) @ j & Loop(lid, k, kOrig1) @ i
-   & ChainStep(cid, k2) @ l & k << k2 & #i < #j
-   ==> Ex #j2. ChainStep(cid, k) @ j2"
+   & ChainedKey(cid, k2) @ l & k << k2 & #i < #j
+   ==> Ex #j2. ChainedKey(cid, k) @ j2"
 
 // Each chain key is generated exactly once
 lemma chain_keys_unique [reuse, use_induction]:
   "All cid1 cid2 k #i #j.
-     ChainStep(cid1, k) @ i & ChainStep(cid2, k) @ j
+     ChainedKey(cid1, k) @ i & ChainedKey(cid2, k) @ j
      ==> #i = #j & cid1 = cid2"
 
 // The adversary can only learn chain keys after they have been disclosed
 lemma knows_only_expired_chain_keys [reuse, use_induction]:
-  "All cid k #i #j. ChainStep(cid, k) @ i & KU(k) @ j
+  "All cid k #i #j. ChainedKey(cid, k) @ i & KU(k) @ j
    ==> Ex #e. KeyDisclosed(cid, k) @ e & e < j"
 
 // MAC knowledge implies key disclosure or legitimate send
 lemma knows [reuse, use_induction]:
-  "All cid k m #i #j. ChainStep(cid, k) @ i & KU(MAC(f_prime(k), m)) @ j
+  "All cid k m #i #j. ChainedKey(cid, k) @ i & KU(MAC(f_prime(k), m)) @ j
    ==> (Ex #e. KeyDisclosed(cid, k) @ e & e < j)
      | (Ex cid tag #s. SIB1_Sent(cid, m, k, tag) @ s & s < j)"
 
