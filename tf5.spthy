@@ -108,11 +108,11 @@ rule UeBootstrapVerify:
 
 // gNB sends SIB1: discloses k_prev, sends message MAC'd with f_prime(k_next)
 rule GnbSend:
-  let tag = MAC(f_prime(k_next), m)
-      msg = <m, tag> in
-    [ GnbState(cell_id, k_prev, t0, tp), !ChainKey(cell_id, k_next, k_prev), Fr(m) ]
+  let tag = MAC(f_prime(k_next), ~m)
+      msg = <~m, tag> in
+    [ GnbState(cell_id, k_prev, t0, tp), !ChainKey(cell_id, k_next, k_prev), Fr(~m), Fr(~sid) ]
   --[ GnbDisclosedKey(cell_id, k_prev)
-    , SIB1_Sent(cell_id, m, k_next, tag)
+    , SIB1_Sent(cell_id, ~m, k_next, tag)
     , IntervalExpired(cell_id, k_prev)
     ]->
     [ GnbState(cell_id, k_next, t0, tp), Out(k_prev), Out(msg) ]
@@ -122,9 +122,9 @@ rule GnbSend:
 // UE observes a SIB1 packet on air. `rid` is a reception-specific identifier to link this event to the subsequent verification steps.
 rule UeRecv:
   let msg = <m, tag> in
-    [ !Receiver(cell_id, k0), In(msg), Fr(rid) ]
-  --[ SIB1_Received(rid, cell_id, m, tag) ]->
-    [ UeRecvBuffer(rid, cell_id, k0, msg) ]
+    [ !Receiver(cell_id, k0), In(msg), Fr(~rid) ]
+  --[ SIB1_Received(~rid, cell_id, m, tag) ]->
+    [ UeRecvBuffer(~rid, cell_id, k0, msg) ]
 
 // Safe-packet test gate
 rule UeRecvConfirm:
@@ -139,10 +139,10 @@ rule UeCheckAuth0:
   in
     [ UePendingAuth(rid, cell_id, k0, msg)
     , In(k)
-    , Fr(loopId)
+    , Fr(~loopId)
     ]
-  --[ CheckStart(loopId, k, args) ]->
-    [ CheckAuthLoop(loopId, k, args) ]
+  --[ CheckStart(~loopId, k, args) ]->
+    [ CheckAuthLoop(~loopId, k, args) ]
 
 // Verification loop step: advance one hash towards k0
 // !ChainKey premise constrains walk to cell_id's chain, giving identity binding.
