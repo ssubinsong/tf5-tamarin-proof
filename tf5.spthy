@@ -31,11 +31,11 @@ rule PKG_Extract:
 
 rule GnbKeyExpire:
     [ GnbKeyValidityTimer(cell_id, key_validity) ]
-  --[ GnbKeyExpire(cell_id, key_validity) ]->
+  --[ GnbKeyExpired(cell_id, key_validity) ]->
     [ ]
 
 // Adversary compromises a gNB's signing key (key leakage)
-rule Reveal_GnbSignKey:
+rule GnbCompromise:
     [ !GnbSignKey(cell_id, sk_id, key_validity) ]
   --[ GnbCompromised(cell_id) ]->
     [ Out(sk_id) ]
@@ -51,7 +51,7 @@ rule Gen_Start:
 // gNB extends the chain by one hash step. !ChainKey links enable chain traversal.
 rule Gen_Step:
     [ Gen(cell_id, seed, curr) ]
-  --[ IsChainKey(cell_id, f(curr)) ]->
+  --[ ChainStep(cell_id, f(curr)) ]->
     [ Gen(cell_id, seed, f(curr))
     , !ChainKey(cell_id, curr, f(curr))
     ]
@@ -221,7 +221,7 @@ restriction SigNotExpired:
 restriction GnbKeyNotExpired:
   "All cell_id key_validity #s #e.
   GnbKeyNotExpired(cell_id, key_validity) @ s
-  & GnbKeyExpire(cell_id, key_validity) @ e
+  & GnbKeyExpired(cell_id, key_validity) @ e
   ==> s < e"
 
 // TESLA safe-packet test: a UE-side assertion emitted at UeRecvConfirm
@@ -249,23 +249,23 @@ lemma loop_origin [reuse, use_induction]:
 lemma loopchain [reuse, use_induction]:
   "All cell_id lid k k2 kOrig1 #i #j #l.
      Loop(lid, k2, kOrig1) @ j & Loop(lid, k, kOrig1) @ i
-   & IsChainKey(cell_id, k2) @ l & k << k2 & #i < #j
-   ==> Ex #j2. IsChainKey(cell_id, k) @ j2"
+   & ChainStep(cell_id, k2) @ l & k << k2 & #i < #j
+   ==> Ex #j2. ChainStep(cell_id, k) @ j2"
 
 // Each chain key is generated exactly once
 lemma chain_keys_unique [reuse, use_induction]:
   "All cell_id1 cell_id2 k #i #j.
-     IsChainKey(cell_id1, k) @ i & IsChainKey(cell_id2, k) @ j
+     ChainStep(cell_id1, k) @ i & ChainStep(cell_id2, k) @ j
      ==> #i = #j & cell_id1 = cell_id2"
 
 // The adversary can only learn chain keys after they have been disclosed
 lemma knows_only_expired_chain_keys [reuse, use_induction]:
-  "All cell_id k #i #j. IsChainKey(cell_id, k) @ i & KU(k) @ j
+  "All cell_id k #i #j. ChainStep(cell_id, k) @ i & KU(k) @ j
    ==> Ex #e. GnbDisclosedKey(cell_id, k) @ e & e < j"
 
 // MAC knowledge implies key disclosure or legitimate send
 lemma knows [reuse, use_induction]:
-  "All cell_id k m #i #j. IsChainKey(cell_id, k) @ i & KU(MAC(f_prime(k), m)) @ j
+  "All cell_id k m #i #j. ChainStep(cell_id, k) @ i & KU(MAC(f_prime(k), m)) @ j
    ==> (Ex #e. GnbDisclosedKey(cell_id, k) @ e & e < j)
      | (Ex cell_id tag #s. SIB1_Sent(cell_id, m, k, tag) @ s & s < j)"
 
@@ -303,7 +303,7 @@ lemma stale_gnb_signing_key_rejected:
    ==>
      (Ex #k. GnbKeyExtract(cell_id, key_validity) @ k
            & k < j
-           & (All #l. GnbKeyExpire(cell_id, key_validity) @ l ==> j < l))
+           & (All #l. GnbKeyExpired(cell_id, key_validity) @ l ==> j < l))
    | (Ex #c. GnbCompromised(cell_id) @ c & c < j)"
 
 // Compromise isolation (bootstrap)
