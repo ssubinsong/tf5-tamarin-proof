@@ -22,22 +22,22 @@ rule PKG_Setup:
   --[ OnlyOnce('pkg_setup') ]->
     [ !MSK(~msk), !MPK(ibs_mpk(~msk)), Out(ibs_mpk(~msk)) ]
 
-// PKG issues an identity-based signing key to a gNB identified by cell_id
+// PKG issues an identity-based signing key to a gNB identified by cell ID
 rule PKG_Extract:
     [ !MSK(~msk), Fr(~key_validity) ]
-  --[ GnbKeyExtract($cell_id, ~key_validity) ]->
-    [ !GnbSignKey($cell_id, ibs_extract(~msk, $cell_id), ~key_validity),
-      GnbKeyValidityTimer($cell_id, ~key_validity)]
+  --[ GnbKeyExtract($cid, ~key_validity) ]->
+    [ !GnbSignKey($cid, ibs_extract(~msk, $cid), ~key_validity),
+      GnbKeyValidityTimer($cid, ~key_validity)]
 
 rule GnbKeyExpire:
-    [ GnbKeyValidityTimer(cell_id, key_validity) ]
-  --[ GnbKeyExpired(cell_id, key_validity) ]->
+    [ GnbKeyValidityTimer(cid, key_validity) ]
+  --[ GnbKeyExpired(cid, key_validity) ]->
     [ ]
 
 // Adversary compromises a gNB's signing key (key leakage)
 rule GnbCompromise:
-    [ !GnbSignKey(cell_id, sk_id, key_validity) ]
-  --[ GnbCompromised(cell_id) ]->
+    [ !GnbSignKey(cid, sk_id, key_validity) ]
+  --[ GnbCompromised(cid) ]->
     [ Out(sk_id) ]
 
 // --- Chain setup phase ---
@@ -46,48 +46,48 @@ rule GnbCompromise:
 rule Gen_Start:
     [ Fr(~seed) ]
   -->
-    [ Gen($cell_id, ~seed, ~seed) ]
+    [ Gen($cid, ~seed, ~seed) ]
 
 // gNB extends the chain by one hash step. !ChainKey links enable chain traversal.
 rule Gen_Step:
-    [ Gen(cell_id, seed, curr) ]
-  --[ ChainStep(cell_id, f(curr)) ]->
-    [ Gen(cell_id, seed, f(curr))
-    , !ChainKey(cell_id, curr, f(curr))
+    [ Gen(cid, seed, curr) ]
+  --[ ChainStep(cid, f(curr)) ]->
+    [ Gen(cid, seed, f(curr))
+    , !ChainKey(cid, curr, f(curr))
     ]
 
 // gNB decides to stop chain generation.
 // At least one Gen_Step is guaranteed by GnbSend requiring !ChainKey(k_prev, k_next).
 rule Gen_Stop:
-    [ Gen(cell_id, seed, k0), Fr(~t0) ]
-  --[ GnbDisclosedKey(cell_id, k0) ]->
-    [ GnbState(cell_id, k0, ~t0, $tesla_params)
-    , !BootstrapReady(cell_id, k0, ~t0, $tesla_params) ]
+    [ Gen(cid, seed, k0), Fr(~t0) ]
+  --[ GnbDisclosedKey(cid, k0) ]->
+    [ GnbState(cid, k0, ~t0, $tesla_params)
+    , !BootstrapReady(cid, k0, ~t0, $tesla_params) ]
 
 // --- Initial chain key distribution ---
 
 // gNB signs and broadcasts SIB-TF5 containing TESLA params (k0, t0) via IBS.
 // ~sig_instance acts as a per-signature freshness nonce bound into the signed message.
 rule GnbBootstrapSend:
-  let bootstrap_msg = <cell_id, k0, t0, tesla_params, ~sig_instance, key_validity>
+  let bootstrap_msg = <cid, k0, t0, tesla_params, ~sig_instance, key_validity>
       sig = ibs_sign(sk_id, bootstrap_msg)
   in
-    [ !BootstrapReady(cell_id, k0, t0, tesla_params)
-    , !GnbSignKey(cell_id, sk_id, key_validity), Fr(~sig_instance)
+    [ !BootstrapReady(cid, k0, t0, tesla_params)
+    , !GnbSignKey(cid, sk_id, key_validity), Fr(~sig_instance)
     ]
-  --[ SIB_TF5_Sent(cell_id, k0, t0, tesla_params, ~sig_instance) ]->
+  --[ SIB_TF5_Sent(cid, k0, t0, tesla_params, ~sig_instance) ]->
     [ Out(<bootstrap_msg, sig>)
-    , SigValidityTimer(cell_id, k0, t0, tesla_params, ~sig_instance) ]
+    , SigValidityTimer(cid, k0, t0, tesla_params, ~sig_instance) ]
 
 // Signature validity window closes (adversary-scheduled; always strictly after Send).
 rule GnbBootstrapSigExpire:
-    [ SigValidityTimer(cell_id, k0, t0, tp, sig_instance) ]
-  --[ SigExpire(cell_id, k0, t0, tp, sig_instance) ]->
+    [ SigValidityTimer(cid, k0, t0, tp, sig_instance) ]
+  --[ SigExpire(cid, k0, t0, tp, sig_instance) ]->
     [ ]
 
 // UE receives SIB-TF5.
 rule UeBootstrapRecv:
-    let msg = <cell_id, k0, t0, tesla_params, sig_instance, key_validity>
+    let msg = <cid, k0, t0, tesla_params, sig_instance, key_validity>
     in
     [ In(<msg, sig>) ]
     --[ SIB_TF5_Received(msg, sig) ]->
@@ -95,14 +95,14 @@ rule UeBootstrapRecv:
 
 // UE verifies the IBS signature of SIB-TF5.
 rule UeBootstrapVerify:
-  let msg = <cell_id, k0, t0, tesla_params, sig_instance, key_validity>
+  let msg = <cid, k0, t0, tesla_params, sig_instance, key_validity>
   in
     [ !MPK(mpk), BootstrapVerify(msg, sig) ]
-  --[ Eq(ibs_verify(mpk, cell_id, msg, sig), true),
-      SigNotExpired(cell_id, k0, t0, tesla_params, sig_instance),
-      GnbKeyNotExpired(cell_id, key_validity),
-      SIB_TF5_Verified(cell_id, key_validity, k0, t0, tesla_params, sig_instance) ]->
-    [ !Receiver(cell_id, k0) ]
+  --[ Eq(ibs_verify(mpk, cid, msg, sig), true),
+      SigNotExpired(cid, k0, t0, tesla_params, sig_instance),
+      GnbKeyNotExpired(cid, key_validity),
+      SIB_TF5_Verified(cid, key_validity, k0, t0, tesla_params, sig_instance) ]->
+    [ !Receiver(cid, k0) ]
 
 // --- Sending ---
 
@@ -110,34 +110,34 @@ rule UeBootstrapVerify:
 rule GnbSend:
   let tag = MAC(f_prime(k_next), ~m)
       msg = <~m, tag> in
-    [ GnbState(cell_id, k_prev, t0, tp), !ChainKey(cell_id, k_next, k_prev), Fr(~m), Fr(~sid) ]
-  --[ GnbDisclosedKey(cell_id, k_prev)
-    , SIB1_Sent(cell_id, ~m, k_next, tag)
-    , IntervalExpired(cell_id, k_prev)
+    [ GnbState(cid, k_prev, t0, tp), !ChainKey(cid, k_next, k_prev), Fr(~m), Fr(~sid) ]
+  --[ GnbDisclosedKey(cid, k_prev)
+    , SIB1_Sent(cid, ~m, k_next, tag)
+    , IntervalExpired(cid, k_prev)
     ]->
-    [ GnbState(cell_id, k_next, t0, tp), Out(k_prev), Out(msg) ]
+    [ GnbState(cid, k_next, t0, tp), Out(k_prev), Out(msg) ]
 
 // --- Receiving — loop-based verification (Cremers style) ---
 
 // UE observes a SIB1 packet on air. `rid` is a reception-specific identifier to link this event to the subsequent verification steps.
 rule UeRecv:
   let msg = <m, tag> in
-    [ !Receiver(cell_id, k0), In(msg), Fr(~rid) ]
-  --[ SIB1_Received(~rid, cell_id, m, tag) ]->
-    [ UeRecvBuffer(~rid, cell_id, k0, msg) ]
+    [ !Receiver(cid, k0), In(msg), Fr(~rid) ]
+  --[ SIB1_Received(~rid, cid, m, tag) ]->
+    [ UeRecvBuffer(~rid, cid, k0, msg) ]
 
 // Safe-packet test gate
 rule UeRecvConfirm:
   let msg = <m, tag> in
-    [ UeRecvBuffer(rid, cell_id, k0, msg) ]
+    [ UeRecvBuffer(rid, cid, k0, msg) ]
   --[ SafePktTest(rid, tag) ]->
-    [ UePendingAuth(rid, cell_id, k0, msg) ]
+    [ UePendingAuth(rid, cid, k0, msg) ]
 
 // UE obtains a disclosed key from the network and starts the verification loop
 rule UeCheckAuth0:
-  let args = <k0, cell_id, k, msg, rid>
+  let args = <k0, cid, k, msg, rid>
   in
-    [ UePendingAuth(rid, cell_id, k0, msg)
+    [ UePendingAuth(rid, cid, k0, msg)
     , In(k)
     , Fr(~loopId)
     ]
@@ -145,10 +145,10 @@ rule UeCheckAuth0:
     [ CheckAuthLoop(~loopId, k, args) ]
 
 // Verification loop step: advance one hash towards k0
-// !ChainKey premise constrains walk to cell_id's chain, giving identity binding.
+// !ChainKey premise constrains walk to cid's chain, giving identity binding.
 rule UeCheckAuth:
-  let args = <k0, cell_id, kOrig, msg, rid> in
-    [ CheckAuthLoop(loopId, k, args), !ChainKey(cell_id, k, f(k)) ]
+  let args = <k0, cid, kOrig, msg, rid> in
+    [ CheckAuthLoop(loopId, k, args), !ChainKey(cid, k, f(k)) ]
   --[ CheckLoop(loopId, k, args, kOrig), Loop(loopId, k, kOrig) ]->
     [ CheckAuthLoop(loopId, f(k), args) ]
 
@@ -156,29 +156,29 @@ rule UeCheckAuth:
 rule UeCheckAuthClaim:
   let msg = <m, MAC(f_prime(kRef), m)>
   in
-    [ CheckAuthLoop(loopId, k0, <k0, cell_id, kRef, msg, rid>) ]
-  --[ SIB1_Verified(rid, cell_id, m, kRef, k0) ]->
-    [ !SIB1_DeliveredOnChain(cell_id, k0) ]
+    [ CheckAuthLoop(loopId, k0, <k0, cid, kRef, msg, rid>) ]
+  --[ SIB1_Verified(rid, cid, m, kRef, k0) ]->
+    [ !SIB1_DeliveredOnChain(cid, k0) ]
 
 // --- Chain renewal (gNB) ---
 
 // gNB binds a successor chain to the bootstrapped original chain.
 rule PrepareNextChain:
-    [ !BootstrapReady(cell_id, k0, t0, tp)
-    , !BootstrapReady(cell_id, k0_next, t1, tp)
+    [ !BootstrapReady(cid, k0, t0, tp)
+    , !BootstrapReady(cid, k0_next, t1, tp)
     ]
-  --[ OnlyOnce(<'prepare_next', cell_id, k0>)
-    , NextChainPrepared(cell_id, k0, k0_next)
+  --[ OnlyOnce(<'prepare_next', cid, k0>)
+    , NextChainPrepared(cid, k0, k0_next)
     , Neq(k0, k0_next) ]->
-    [ !NextCommitForChain(cell_id, k0, k0_next) ]
+    [ !NextCommitForChain(cid, k0, k0_next) ]
 
 // After a SIB1 on the current chain is verified, the UE learns the
 // abstracted next-chain commitment carried in that SIB1.
 rule UeRecvNextCommit:
-    [ !SIB1_DeliveredOnChain(cell_id, k0)
-    , !NextCommitForChain(cell_id, k0, k0_next) ]
+    [ !SIB1_DeliveredOnChain(cid, k0)
+    , !NextCommitForChain(cid, k0, k0_next) ]
   -->
-    [ !NextCommitReceived(cell_id, k0, k0_next) ]
+    [ !NextCommitReceived(cid, k0, k0_next) ]
 
 
 // --- Chain renewal (UE) ---
@@ -187,16 +187,16 @@ rule UeRecvNextCommit:
 // This rule is split into two stages to make renewal_without_rebootstrap provable;
 // otherwise the proof self-loops on !Receiver and fails
 rule UeActivateNextChain:
-    [ !Receiver(cell_id, k0)
-    , !NextCommitReceived(cell_id, k0, k0_next) ]
-  --[ ChainRenewed(cell_id, k0_next)
-    , OnlyOnce(<'renew', cell_id, k0_next>) ]->
-    [ PendingReceiver(cell_id, k0_next) ]
+    [ !Receiver(cid, k0)
+    , !NextCommitReceived(cid, k0, k0_next) ]
+  --[ ChainRenewed(cid, k0_next)
+    , OnlyOnce(<'renew', cid, k0_next>) ]->
+    [ PendingReceiver(cid, k0_next) ]
 
 rule UePromoteNextReceiver:
-    [ PendingReceiver(cell_id, k0_next) ]
+    [ PendingReceiver(cid, k0_next) ]
   -->
-    [ !Receiver(cell_id, k0_next) ]
+    [ !Receiver(cid, k0_next) ]
 
 
 // --- Restrictions ---
@@ -213,15 +213,15 @@ restriction Neq:
   "All x y #i. Neq(x, y) @ i ==> not(x = y)"
 
 restriction SigNotExpired:
-  "All cell_id k0 t0 tp sig_instance #s #e.
-     SigNotExpired(cell_id, k0, t0, tp, sig_instance) @ s
-   & SigExpire(cell_id, k0, t0, tp, sig_instance) @ e
+  "All cid k0 t0 tp sig_instance #s #e.
+     SigNotExpired(cid, k0, t0, tp, sig_instance) @ s
+   & SigExpire(cid, k0, t0, tp, sig_instance) @ e
    ==> s < e"
 
 restriction GnbKeyNotExpired:
-  "All cell_id key_validity #s #e.
-  GnbKeyNotExpired(cell_id, key_validity) @ s
-  & GnbKeyExpired(cell_id, key_validity) @ e
+  "All cid key_validity #s #e.
+  GnbKeyNotExpired(cid, key_validity) @ s
+  & GnbKeyExpired(cid, key_validity) @ e
   ==> s < e"
 
 // TESLA safe-packet test: a UE-side assertion emitted at UeRecvConfirm
@@ -230,9 +230,9 @@ restriction GnbKeyNotExpired:
 // the tag is not a MAC term the restriction is vacuous (verification will
 // also fail downstream, so nothing accepted).
 restriction SafePktTest:
-  "All cell_id k m rid #s #d.
+  "All cid k m rid #s #d.
      SafePktTest(rid, MAC(f_prime(k), m)) @ s
-   & GnbDisclosedKey(cell_id, k) @ d
+   & GnbDisclosedKey(cid, k) @ d
    ==> s < d"
 
 // --- Proof infrastructure (order is load-bearing) ---
@@ -247,168 +247,168 @@ lemma loop_origin [reuse, use_induction]:
 
 // Chain completeness: all keys between two visited loop points are ChainKeys
 lemma loopchain [reuse, use_induction]:
-  "All cell_id lid k k2 kOrig1 #i #j #l.
+  "All cid lid k k2 kOrig1 #i #j #l.
      Loop(lid, k2, kOrig1) @ j & Loop(lid, k, kOrig1) @ i
-   & ChainStep(cell_id, k2) @ l & k << k2 & #i < #j
-   ==> Ex #j2. ChainStep(cell_id, k) @ j2"
+   & ChainStep(cid, k2) @ l & k << k2 & #i < #j
+   ==> Ex #j2. ChainStep(cid, k) @ j2"
 
 // Each chain key is generated exactly once
 lemma chain_keys_unique [reuse, use_induction]:
-  "All cell_id1 cell_id2 k #i #j.
-     ChainStep(cell_id1, k) @ i & ChainStep(cell_id2, k) @ j
-     ==> #i = #j & cell_id1 = cell_id2"
+  "All cid1 cid2 k #i #j.
+     ChainStep(cid1, k) @ i & ChainStep(cid2, k) @ j
+     ==> #i = #j & cid1 = cid2"
 
 // The adversary can only learn chain keys after they have been disclosed
 lemma knows_only_expired_chain_keys [reuse, use_induction]:
-  "All cell_id k #i #j. ChainStep(cell_id, k) @ i & KU(k) @ j
-   ==> Ex #e. GnbDisclosedKey(cell_id, k) @ e & e < j"
+  "All cid k #i #j. ChainStep(cid, k) @ i & KU(k) @ j
+   ==> Ex #e. GnbDisclosedKey(cid, k) @ e & e < j"
 
 // MAC knowledge implies key disclosure or legitimate send
 lemma knows [reuse, use_induction]:
-  "All cell_id k m #i #j. ChainStep(cell_id, k) @ i & KU(MAC(f_prime(k), m)) @ j
-   ==> (Ex #e. GnbDisclosedKey(cell_id, k) @ e & e < j)
-     | (Ex cell_id tag #s. SIB1_Sent(cell_id, m, k, tag) @ s & s < j)"
+  "All cid k m #i #j. ChainStep(cid, k) @ i & KU(MAC(f_prime(k), m)) @ j
+   ==> (Ex #e. GnbDisclosedKey(cid, k) @ e & e < j)
+     | (Ex cid tag #s. SIB1_Sent(cid, m, k, tag) @ s & s < j)"
 
 // --- Bootstrap (IBS initial key distribution) ---
 
 // IBS bootstrap path is executable
 lemma bootstrap_is_executable:
   exists-trace
-  "Ex cell_id key_validity k0 t0 tp sig_instance #j.
-      SIB_TF5_Verified(cell_id, key_validity, k0, t0, tp, sig_instance) @ j
-    & (All #c. GnbCompromised(cell_id) @ c ==> F)"
+  "Ex cid key_validity k0 t0 tp sig_instance #j.
+      SIB_TF5_Verified(cid, key_validity, k0, t0, tp, sig_instance) @ j
+    & (All #c. GnbCompromised(cid) @ c ==> F)"
 
 // Bootstrap signature authenticity and integrity
 lemma bootstrap_authentic:
-  "All cell_id key_validity k0 t0 tp sig_instance #j.
-     SIB_TF5_Verified(cell_id, key_validity, k0, t0, tp, sig_instance) @ j
+  "All cid key_validity k0 t0 tp sig_instance #j.
+     SIB_TF5_Verified(cid, key_validity, k0, t0, tp, sig_instance) @ j
    ==>
-     (Ex #k. SIB_TF5_Sent(cell_id, k0, t0, tp, sig_instance) @ k & k < j)
-   | (Ex #c. GnbCompromised(cell_id) @ c & c < j)"
+     (Ex #k. SIB_TF5_Sent(cid, k0, t0, tp, sig_instance) @ k & k < j)
+   | (Ex #c. GnbCompromised(cid) @ c & c < j)"
 
 // Bootstrap freshness: stale bootstrap with expired signature is rejected
 lemma bootstrap_freshness:
-   "All cell_id k0 t0 tesla_params sig_instance key_validity sig #r #v #n.
-        SIB_TF5_Received(<cell_id, k0, t0, tesla_params, sig_instance, key_validity>, sig) @ r
-      & SIB_TF5_Verified(cell_id, key_validity, k0, t0, tesla_params, sig_instance) @ v
-      & SigExpire(cell_id, k0, t0, tesla_params, sig_instance) @ n
+   "All cid k0 t0 tesla_params sig_instance key_validity sig #r #v #n.
+        SIB_TF5_Received(<cid, k0, t0, tesla_params, sig_instance, key_validity>, sig) @ r
+      & SIB_TF5_Verified(cid, key_validity, k0, t0, tesla_params, sig_instance) @ v
+      & SigExpire(cid, k0, t0, tesla_params, sig_instance) @ n
       ==>
          v < n
-       | Ex #c. GnbCompromised(cell_id) @ c & c < v"
+       | Ex #c. GnbCompromised(cid) @ c & c < v"
 
 // Stale gNB signing keys are rejected
 lemma stale_gnb_signing_key_rejected:
-  "All cell_id k0 t0 tp sig_instance key_validity #j.
-     SIB_TF5_Verified(cell_id, key_validity, k0, t0, tp, sig_instance) @ j
+  "All cid k0 t0 tp sig_instance key_validity #j.
+     SIB_TF5_Verified(cid, key_validity, k0, t0, tp, sig_instance) @ j
    ==>
-     (Ex #k. GnbKeyExtract(cell_id, key_validity) @ k
+     (Ex #k. GnbKeyExtract(cid, key_validity) @ k
            & k < j
-           & (All #l. GnbKeyExpired(cell_id, key_validity) @ l ==> j < l))
-   | (Ex #c. GnbCompromised(cell_id) @ c & c < j)"
+           & (All #l. GnbKeyExpired(cid, key_validity) @ l ==> j < l))
+   | (Ex #c. GnbCompromised(cid) @ c & c < j)"
 
 // Compromise isolation (bootstrap)
 lemma bootstrap_compromise_bounded:
-  "All cell_id cell_id2 key_validity k0 t0 tp sig_instance #j #c.
-     GnbCompromised(cell_id) @ c
-   & SIB_TF5_Verified(cell_id2, key_validity, k0, t0, tp, sig_instance) @ j
-   & not(cell_id = cell_id2)
+  "All cid cid2 key_validity k0 t0 tp sig_instance #j #c.
+     GnbCompromised(cid) @ c
+   & SIB_TF5_Verified(cid2, key_validity, k0, t0, tp, sig_instance) @ j
+   & not(cid = cid2)
    ==>
-     (Ex #s. SIB_TF5_Sent(cell_id2, k0, t0, tp, sig_instance) @ s & #s < #j)
-   | (Ex #c2. GnbCompromised(cell_id2) @ c2 & c2 < j)"
+     (Ex #s. SIB_TF5_Sent(cid2, k0, t0, tp, sig_instance) @ s & #s < #j)
+   | (Ex #c2. GnbCompromised(cid2) @ c2 & c2 < j)"
 
 // --- TESLA SIB1 authentication ---
 
 // TESLA delivery is executable under honest conditions
 lemma tesla_is_executable:
   exists-trace
-  "( Ex rid cell_id m k k0_chain tag #i #j.
-      SIB1_Verified(rid, cell_id, m, k, k0_chain) @ i
-     & SIB1_Sent(cell_id, m, k, tag) @ j )
-  & (All cell_id #r. GnbCompromised(cell_id) @ r ==> F)"
+  "( Ex rid cid m k k0_chain tag #i #j.
+      SIB1_Verified(rid, cid, m, k, k0_chain) @ i
+     & SIB1_Sent(cid, m, k, tag) @ j )
+  & (All cid #r. GnbCompromised(cid) @ r ==> F)"
 
 // Full base-chain lifecycle is executable (bootstrap -> SIB1, no renewal)
 lemma base_chain_is_executable:
   exists-trace
-  "( Ex rid cell_id key_validity m k k0 t0 tp sig_instance #i #b.
-    SIB_TF5_Verified(cell_id, key_validity, k0, t0, tp, sig_instance) @ b
-    & SIB1_Verified(rid, cell_id, m, k, k0) @ i
+  "( Ex rid cid key_validity m k k0 t0 tp sig_instance #i #b.
+    SIB_TF5_Verified(cid, key_validity, k0, t0, tp, sig_instance) @ b
+    & SIB1_Verified(rid, cid, m, k, k0) @ i
     & b < i
-    & (All #r k0_next. ChainRenewed(cell_id, k0_next) @ r ==> i < r)
+    & (All #r k0_next. ChainRenewed(cid, k0_next) @ r ==> i < r)
     )
-  & (All cell_id #c. GnbCompromised(cell_id) @ c ==> F)"
+  & (All cid #c. GnbCompromised(cid) @ c ==> F)"
 
 // Adversary model validation: compromise enables forgery
 lemma compromise_enables_forgery:
   exists-trace
-  "Ex rid cell_id m k k0_chain #v #c.
-     SIB1_Verified(rid, cell_id, m, k, k0_chain) @ v
-   & GnbCompromised(cell_id) @ c
-   & (All tag #s. SIB1_Sent(cell_id, m, k, tag) @ s ==> F)"
+  "Ex rid cid m k k0_chain #v #c.
+     SIB1_Verified(rid, cid, m, k, k0_chain) @ v
+   & GnbCompromised(cid) @ c
+   & (All tag #s. SIB1_Sent(cid, m, k, tag) @ s ==> F)"
 
 // Accepted SIB1 was sent by an honest gNB unless the cell was compromised
 lemma authentic:
-  "All rid cell_id m k k0_chain #i #r.
-        SIB1_Received(rid, cell_id, m, MAC(f_prime(k), m)) @ r
-      & SIB1_Verified(rid, cell_id, m, k, k0_chain) @ i
+  "All rid cid m k k0_chain #i #r.
+        SIB1_Received(rid, cid, m, MAC(f_prime(k), m)) @ r
+      & SIB1_Verified(rid, cid, m, k, k0_chain) @ i
     ==>
       (Ex tag #s.
-       (SIB1_Sent(cell_id, m, k, tag) @ s & s < r))
-    | (Ex #j. GnbCompromised(cell_id) @ j & j < i)"
+       (SIB1_Sent(cid, m, k, tag) @ s & s < r))
+    | (Ex #j. GnbCompromised(cid) @ j & j < i)"
 
 lemma sib1_freshness:
-  "All rid cell_id m k k0 #r #s #v #n.
-       SIB1_Received(rid, cell_id, m, MAC(f_prime(k), m)) @ r
+  "All rid cid m k k0 #r #s #v #n.
+       SIB1_Received(rid, cid, m, MAC(f_prime(k), m)) @ r
      & SafePktTest(rid, MAC(f_prime(k), m)) @ s
-     & SIB1_Verified(rid, cell_id, m, k, k0) @ v
-     & IntervalExpired(cell_id, k) @ n
+     & SIB1_Verified(rid, cid, m, k, k0) @ v
+     & IntervalExpired(cid, k) @ n
      ==>
         r < n
-      | Ex #c. GnbCompromised(cell_id) @ c & c < v"
+      | Ex #c. GnbCompromised(cid) @ c & c < v"
 
-// Compromise isolation: compromising cell_id doesn't affect cell_id2
+// Compromise isolation: compromising cid doesn't affect cid2
 lemma sib1_compromise_isolation:
-  "All rid cell_id cell_id2 m k k0_chain #j #c.
-     GnbCompromised(cell_id) @ c
-   & SIB1_Verified(rid, cell_id2, m, k, k0_chain) @ j
-   & not(cell_id = cell_id2)
+  "All rid cid cid2 m k k0_chain #j #c.
+     GnbCompromised(cid) @ c
+   & SIB1_Verified(rid, cid2, m, k, k0_chain) @ j
+   & not(cid = cid2)
    ==>
-     (Ex tag #s. SIB1_Sent(cell_id2, m, k, tag) @ s & #s < #j)
-   | (Ex #c2. GnbCompromised(cell_id2) @ c2 & c2 < j)"
+     (Ex tag #s. SIB1_Sent(cid2, m, k, tag) @ s & #s < #j)
+   | (Ex #c2. GnbCompromised(cid2) @ c2 & c2 < j)"
 
 // --- Chain renewal ---
 
 // Honest chain renewal is reachable without compromise
 lemma renewal_is_executable:
   exists-trace
-  "Ex cell_id k0_next #r.
-      ChainRenewed(cell_id, k0_next) @ r
-    & (All #c. GnbCompromised(cell_id) @ c ==> F)"
+  "Ex cid k0_next #r.
+      ChainRenewed(cid, k0_next) @ r
+    & (All #c. GnbCompromised(cid) @ c ==> F)"
 
 // SIB1 verification on a renewed chain is reachable without compromise
 lemma renewed_chain_is_executable:
   exists-trace
-  "( Ex rid cell_id m k k0_next #i #r.
-       ChainRenewed(cell_id, k0_next) @ r
-     & SIB1_Verified(rid, cell_id, m, k, k0_next) @ i
+  "( Ex rid cid m k k0_next #i #r.
+       ChainRenewed(cid, k0_next) @ r
+     & SIB1_Verified(rid, cid, m, k, k0_next) @ i
      & r < i )
-  & (All cell_id #c. GnbCompromised(cell_id) @ c ==> F)"
+  & (All cid #c. GnbCompromised(cid) @ c ==> F)"
 
 // Chain renewal proceeds without re-bootstrapping on the successor chain
 lemma renewal_without_rebootstrap:
   exists-trace
-  "Ex cell_id k0_next #r.
-      ChainRenewed(cell_id, k0_next) @ r
-    & (All #c. GnbCompromised(cell_id) @ c ==> F)
+  "Ex cid k0_next #r.
+      ChainRenewed(cid, k0_next) @ r
+    & (All #c. GnbCompromised(cid) @ c ==> F)
     & (All key_validity t0 tp sig_instance #b.
-        SIB_TF5_Verified(cell_id, key_validity, k0_next, t0, tp, sig_instance) @ b
+        SIB_TF5_Verified(cid, key_validity, k0_next, t0, tp, sig_instance) @ b
         ==> F)"
 
 // Renewed chain commitment is authentic to the gNB
 lemma renewal_commitment_authenticity:
-  "All cell_id k0_next #i.
-     ChainRenewed(cell_id, k0_next) @ i
+  "All cid k0_next #i.
+     ChainRenewed(cid, k0_next) @ i
    ==>
-     (Ex k0 #j. NextChainPrepared(cell_id, k0, k0_next) @ j & j < i)
-   | (Ex #c. GnbCompromised(cell_id) @ c & c < i)"
+     (Ex k0 #j. NextChainPrepared(cid, k0, k0_next) @ j & j < i)
+   | (Ex #c. GnbCompromised(cid) @ c & c < i)"
 
 end
