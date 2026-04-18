@@ -61,7 +61,7 @@ rule Gen_Step:
 rule Gen_Stop:
     [ Gen(<cid, seed>, k0), Fr(~t0) ]
   --[ IntervalExpired(<cid, seed>, k0) ]->
-    [ GnbState(cid, k0, ~t0, $tesla_params)
+    [ GnbState(cid, seed, k0, ~t0, $tesla_params)
     , !BootstrapReady(cid, k0, ~t0, $tesla_params) ]
 
 // --- Initial chain key distribution ---
@@ -110,11 +110,11 @@ rule UeBootstrapVerify:
 rule GnbSend:
   let tag = MAC(f_prime(k_next), ~m)
       msg = <~m, tag> in
-    [ GnbState(cid, k_prev, t0, tp), !ChainKey(<cid, cs>, k_next, k_prev), Fr(~m), Fr(~sid) ]
+    [ GnbState(cid, cs, k_prev, t0, tp), !ChainKey(<cid, cs>, k_next, k_prev), Fr(~m), Fr(~sid) ]
   --[ IntervalExpired(<cid, cs>, k_prev)
     , SIB1_Sent(cid, ~m, k_next, tag)
     ]->
-    [ GnbState(cid, k_next, t0, tp), Out(k_prev), Out(msg) ]
+    [ GnbState(cid, cs, k_next, t0, tp), Out(k_prev), Out(msg) ]
 
 // --- Receiving — loop-based verification (Cremers style) ---
 
