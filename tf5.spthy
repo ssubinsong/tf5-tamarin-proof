@@ -50,10 +50,10 @@ rule Gen_Start:
 
 // gNB extends the chain by one hash step. !CellNextKey links enable chain traversal.
 rule Gen_Step:
-    [ Gen(cell_id, seed, chain) ]
-  --[ ChainKey(f(chain)) ]->
-    [ Gen(cell_id, seed, f(chain))
-    , !CellNextKey(cell_id, f(chain), chain)
+    [ Gen(cell_id, seed, curr) ]
+  --[ IsChainKey(f(curr)) ]->
+    [ Gen(cell_id, seed, f(curr))
+    , !CellNextKey(cell_id, curr, f(curr))
     ]
 
 // gNB decides to stop chain generation.
@@ -110,7 +110,7 @@ rule UeBootstrapVerify:
 rule GnbSend:
   let tag = MAC(f_prime(k_next), m)
       msg = <m, tag> in
-    [ GnbState(cell_id, k_prev, t0, tp), !CellNextKey(cell_id, k_prev, k_next), Fr(m) ]
+    [ GnbState(cell_id, k_prev, t0, tp), !CellNextKey(cell_id, k_next, k_prev), Fr(m) ]
   --[ GnbDisclosedKey(k_prev)
     , SIB1_Sent(cell_id, m, k_next, tag)
     , IntervalExpired(cell_id, k_prev)
@@ -148,7 +148,7 @@ rule UeCheckAuth0:
 // !CellNextKey premise constrains walk to cell_id's chain, giving identity binding.
 rule UeCheckAuth:
   let args = <k0, cell_id, kOrig, msg, rid> in
-    [ CheckAuthLoop(loopId, k, args), !CellNextKey(cell_id, f(k), k) ]
+    [ CheckAuthLoop(loopId, k, args), !CellNextKey(cell_id, k, f(k)) ]
   --[ CheckLoop(loopId, k, args, kOrig), Loop(loopId, k, kOrig) ]->
     [ CheckAuthLoop(loopId, f(k), args) ]
 
@@ -245,25 +245,25 @@ lemma loop_origin [reuse, use_induction]:
      Ex #j #r. CheckStart(lid, kOrig, args) @ j & j < i
               & CheckLoop(lid, kOrig, args, kOrig) @ r & j < r & r < i"
 
-// Chain completeness: all keys between two visited loop points are ChainKeys
+// Chain completeness: all keys between two visited loop points are IsChainKeys
 lemma loopchain [reuse, use_induction]:
   "All lid k k2 kOrig1 #i #j #l.
      Loop(lid, k2, kOrig1) @ j & Loop(lid, k, kOrig1) @ i
-   & ChainKey(k2) @ l & k << k2 & #i < #j
-   ==> Ex #j2. ChainKey(k) @ j2"
+   & IsChainKey(k2) @ l & k << k2 & #i < #j
+   ==> Ex #j2. IsChainKey(k) @ j2"
 
 // Each chain key is generated exactly once (no cross-chain collision)
 lemma chain_keys_unique [reuse, use_induction]:
-  "All k #i #j. ChainKey(k) @ i & ChainKey(k) @ j ==> #i = #j"
+  "All k #i #j. IsChainKey(k) @ i & IsChainKey(k) @ j ==> #i = #j"
 
 // The adversary can only learn chain keys after they have been disclosed
 lemma knows_only_expired_chain_keys [reuse, use_induction]:
-  "All k #i #j. ChainKey(k) @ i & KU(k) @ j
+  "All k #i #j. IsChainKey(k) @ i & KU(k) @ j
    ==> Ex #e. GnbDisclosedKey(k) @ e & e < j"
 
 // MAC knowledge implies key disclosure or legitimate send
 lemma knows [reuse, use_induction]:
-  "All k m #i #j. ChainKey(k) @ i & KU(MAC(f_prime(k), m)) @ j
+  "All k m #i #j. IsChainKey(k) @ i & KU(MAC(f_prime(k), m)) @ j
    ==> (Ex #e. GnbDisclosedKey(k) @ e & e < j)
      | (Ex cell_id tag #s. SIB1_Sent(cell_id, m, k, tag) @ s & s < j)"
 
