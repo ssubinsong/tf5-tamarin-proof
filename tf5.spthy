@@ -77,12 +77,12 @@ rule GnbBootstrapSend:
     ]
   --[ SIB_TF5_Sent(cid, k0, t0, ~t_sign) ]->
     [ Out(<bootstrap_msg, sig>)
-    , SigValidityTimer(<cid, k0>, ~t_sign) ]
+    , SigValidityTimer(~t_sign) ]
 
 // Signature validity window closes (adversary-scheduled; always strictly after Send).
 rule GnbBootstrapSigExpire:
-    [ SigValidityTimer(<cid, k0>, t_sign) ]
-  --[ SigExpire(<cid, k0>, t_sign) ]->
+    [ SigValidityTimer(t_sign) ]
+  --[ SigExpire(t_sign) ]->
     [ ]
 
 // UE receives SIB-TF5.
@@ -99,7 +99,7 @@ rule UeBootstrapVerify:
   in
     [ !MPK(mpk), BootstrapVerify(msg, sig) ]
   --[ Eq(ibs_verify(mpk, <cid, exp>, msg, sig), true),
-      SigNotExpired(cid, k0, t0, t_sign),
+      SigNotExpired(t_sign),
       GnbKeyNotExpired(cid, exp),
       SIB_TF5_Verified(cid, exp, k0, t0, t_sign) ]->
     [ !Receiver(cid, k0) ]
@@ -212,9 +212,9 @@ restriction Neq:
   "All x y #i. Neq(x, y) @ i ==> not(x = y)"
 
 restriction SigNotExpired:
-  "All cid k0 t0 t_sign #s #e.
-     SigNotExpired(cid, k0, t0, t_sign) @ s
-   & SigExpire(<cid, k0>, t_sign) @ e
+  "All t_sign #s #e.
+     SigNotExpired(t_sign) @ s
+   & SigExpire(t_sign) @ e
    ==> s < e"
 
 restriction GnbKeyNotExpired:
@@ -290,7 +290,7 @@ lemma bootstrap_freshness:
    "All cid k0 t0 t_sign exp sig #r #v #n.
         SIB_TF5_Received(<cid, k0, t0, t_sign, exp>, sig) @ r
       & SIB_TF5_Verified(cid, exp, k0, t0, t_sign) @ v
-      & SigExpire(<cid, k0>, t_sign) @ n
+      & SigExpire(t_sign) @ n
       ==>
          v < n
        | Ex #c. GnbCompromised(cid, exp) @ c & c < v"
