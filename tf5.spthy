@@ -106,13 +106,19 @@ rule UeBootstrapVerify:
 
 // --- Sending ---
 
+// `msg` is the plain (original) SIB1 content
+rule GenSIB1Msg:
+    [Fr(~msg)]
+    --[OnlyOnce('gen_sib1_msg', ~msg)]->
+    [!IsSIB1(~msg)]
+
 // gNB sends SIB1: discloses k_prev, sends message MAC'd with f_prime(k)
 rule GnbSend:
-  let tag = MAC(f_prime(k), ~m)
-      msg = <~m, tag> in
-    [ GnbState(cid, k_prev), !ChainKey(<cid, cs>, k, k_prev), Fr(~m), Fr(~sid) ]
+  let tag = MAC(f_prime(k), m)
+      msg = <m, tag> in
+    [ !IsSIB1(m), GnbState(cid, k_prev), !ChainKey(<cid, cs>, k, k_prev), Fr(~sid) ]
   --[ IntervalExpired(<cid, cs>, k_prev)
-    , SIB1_Sent(cid, ~m, k, tag)
+    , SIB1_Sent(cid, m, k, tag)
     ]->
     [ GnbState(cid, k), Out(k_prev), Out(msg) ]
 
