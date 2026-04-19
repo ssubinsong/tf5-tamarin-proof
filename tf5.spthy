@@ -118,25 +118,25 @@ rule GnbSend:
 
 // --- Receiving — loop-based verification (Cremers style) ---
 
-// UE observes a SIB1 packet on air. `rid` is a reception-specific identifier to link this event to the subsequent verification steps.
+// UE observes a SIB1 packet on air. `t_rx` is a reception-specific identifier to link this event to the subsequent verification steps.
 rule UeRecv:
   let msg = <m, tag> in
-    [ !Receiver(cid, k0), In(msg), Fr(~rid) ]
-  --[ SIB1_Received(~rid, cid, m, tag) ]->
-    [ UeRecvBuffer(~rid, cid, k0, msg) ]
+    [ !Receiver(cid, k0), In(msg), Fr(~t_rx) ]
+  --[ SIB1_Received(~t_rx, cid, m, tag) ]->
+    [ UeRecvBuffer(~t_rx, cid, k0, msg) ]
 
 // Safe-packet test gate
 rule UeRecvConfirm:
   let msg = <m, tag> in
-    [ UeRecvBuffer(rid, cid, k0, msg) ]
-  --[ SafePktTest(rid, tag) ]->
-    [ UePendingAuth(rid, cid, k0, msg) ]
+    [ UeRecvBuffer(t_rx, cid, k0, msg) ]
+  --[ SafePktTest(t_rx, tag) ]->
+    [ UePendingAuth(t_rx, cid, k0, msg) ]
 
 // UE obtains a disclosed key from the network and starts the verification loop
 rule UeCheckAuth0:
-  let args = <k0, cid, k, msg, rid>
+  let args = <k0, cid, k, msg, t_rx>
   in
-    [ UePendingAuth(rid, cid, k0, msg)
+    [ UePendingAuth(t_rx, cid, k0, msg)
     , In(k)
     , Fr(~loopId)
     ]
@@ -146,7 +146,7 @@ rule UeCheckAuth0:
 // Verification loop step: advance one hash towards k0
 // !ChainKey premise constrains walk to cid's chain, giving identity binding.
 rule UeCheckAuth:
-  let args = <k0, cid, kOrig, msg, rid> in
+  let args = <k0, cid, kOrig, msg, t_rx> in
     [ CheckAuthLoop(loopId, k, args), !ChainKey(<cid, cs>, k, f(k)) ]
   --[ CheckLoop(loopId, k, args, kOrig), Loop(loopId, k, kOrig) ]->
     [ CheckAuthLoop(loopId, f(k), args) ]
@@ -155,8 +155,8 @@ rule UeCheckAuth:
 rule UeCheckAuthClaim:
   let msg = <m, MAC(f_prime(kRef), m)>
   in
-    [ CheckAuthLoop(loopId, k0, <k0, cid, kRef, msg, rid>) ]
-  --[ SIB1_Verified(rid, cid, m, kRef, k0) ]->
+    [ CheckAuthLoop(loopId, k0, <k0, cid, kRef, msg, t_rx>) ]
+  --[ SIB1_Verified(t_rx, cid, m, kRef, k0) ]->
     [ !SIB1_DeliveredOnChain(cid, k0) ]
 
 // --- Chain renewal (gNB) ---
@@ -229,8 +229,8 @@ restriction GnbKeyNotExpired:
 // the tag is not a MAC term the restriction is vacuous (verification will
 // also fail downstream, so nothing accepted).
 restriction SafePktTest:
-  "All cid cs k m rid #s #d.
-     SafePktTest(rid, MAC(f_prime(k), m)) @ s
+  "All cid cs k m t_rx #s #d.
+     SafePktTest(t_rx, MAC(f_prime(k), m)) @ s
    & IntervalExpired(<cid, cs>, k) @ d
    ==> s < d"
 
@@ -320,17 +320,17 @@ lemma bootstrap_compromise_bounded:
 // TESLA delivery is executable under honest conditions
 lemma tesla_is_executable:
   exists-trace
-  "( Ex rid cid m k k0_chain tag #i #j.
-      SIB1_Verified(rid, cid, m, k, k0_chain) @ i
+  "( Ex t_rx cid m k k0_chain tag #i #j.
+      SIB1_Verified(t_rx, cid, m, k, k0_chain) @ i
      & SIB1_Sent(cid, m, k, tag) @ j )
   & (All cid exp #r. GnbCompromised(cid, exp) @ r ==> F)"
 
 // Full base-chain lifecycle is executable (bootstrap -> SIB1, no renewal)
 lemma base_chain_is_executable:
   exists-trace
-  "( Ex rid cid exp m k k0 t0 t_sign #i #b.
+  "( Ex t_rx cid exp m k k0 t0 t_sign #i #b.
     SIB_TF5_Verified(cid, exp, k0, t0, t_sign) @ b
-    & SIB1_Verified(rid, cid, m, k, k0) @ i
+    & SIB1_Verified(t_rx, cid, m, k, k0) @ i
     & b < i
     & (All #r k0_next. ChainRenewed(cid, k0_next) @ r ==> i < r)
     )
@@ -339,26 +339,26 @@ lemma base_chain_is_executable:
 // Adversary model validation: compromise enables forgery
 lemma compromise_enables_forgery:
   exists-trace
-  "Ex rid cid m k k0_chain exp #v #c.
-     SIB1_Verified(rid, cid, m, k, k0_chain) @ v
+  "Ex t_rx cid m k k0_chain exp #v #c.
+     SIB1_Verified(t_rx, cid, m, k, k0_chain) @ v
    & GnbCompromised(cid, exp) @ c
    & (All tag #s. SIB1_Sent(cid, m, k, tag) @ s ==> F)"
 
 // Accepted SIB1 was sent by an honest gNB unless the cell was compromised
 lemma authentic:
-  "All rid cid m k k0_chain #i #r.
-        SIB1_Received(rid, cid, m, MAC(f_prime(k), m)) @ r
-      & SIB1_Verified(rid, cid, m, k, k0_chain) @ i
+  "All t_rx cid m k k0_chain #i #r.
+        SIB1_Received(t_rx, cid, m, MAC(f_prime(k), m)) @ r
+      & SIB1_Verified(t_rx, cid, m, k, k0_chain) @ i
     ==>
       (Ex tag #s.
        (SIB1_Sent(cid, m, k, tag) @ s & s < r))
     | (Ex exp #j. GnbCompromised(cid, exp) @ j & j < i)"
 
 lemma sib1_freshness:
-  "All rid cid cs m k k0 #r #s #v #n.
-       SIB1_Received(rid, cid, m, MAC(f_prime(k), m)) @ r
-     & SafePktTest(rid, MAC(f_prime(k), m)) @ s
-     & SIB1_Verified(rid, cid, m, k, k0) @ v
+  "All t_rx cid cs m k k0 #r #s #v #n.
+       SIB1_Received(t_rx, cid, m, MAC(f_prime(k), m)) @ r
+     & SafePktTest(t_rx, MAC(f_prime(k), m)) @ s
+     & SIB1_Verified(t_rx, cid, m, k, k0) @ v
      & IntervalExpired(<cid, cs>, k) @ n
      ==>
         r < n
@@ -366,9 +366,9 @@ lemma sib1_freshness:
 
 // Compromise isolation: compromising cid doesn't affect cid2
 lemma sib1_compromise_isolation:
-  "All rid cid cid2 exp m k k0_chain #j #c.
+  "All t_rx cid cid2 exp m k k0_chain #j #c.
      GnbCompromised(cid, exp) @ c
-   & SIB1_Verified(rid, cid2, m, k, k0_chain) @ j
+   & SIB1_Verified(t_rx, cid2, m, k, k0_chain) @ j
    & not(cid = cid2)
    ==>
      (Ex tag #s. SIB1_Sent(cid2, m, k, tag) @ s & #s < #j)
@@ -386,9 +386,9 @@ lemma renewal_is_executable:
 // SIB1 verification on a renewed chain is reachable without compromise
 lemma renewed_chain_is_executable:
   exists-trace
-  "( Ex rid cid m k k0_next #i #r.
+  "( Ex t_rx cid m k k0_next #i #r.
        ChainRenewed(cid, k0_next) @ r
-     & SIB1_Verified(rid, cid, m, k, k0_next) @ i
+     & SIB1_Verified(t_rx, cid, m, k, k0_next) @ i
      & r < i )
   & (All cid exp #c. GnbCompromised(cid, exp) @ c ==> F)"
 
