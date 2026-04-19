@@ -26,7 +26,7 @@ rule PKG_Setup:
 rule PKG_Extract:
     [ !MSK(~msk), Fr(~exp) ]
   --[ GnbKeyExtract($cid, ~exp) ]->
-    [ !GnbSignKey($cid, ibs_extract(~msk, <$cid, ~exp>), ~exp),
+    [ !GnbSignKey(<$cid, ~exp> ibs_extract(~msk, <$cid, ~exp>)),
       GnbKeyValidityTimer($cid, ~exp)]
 
 rule GnbKeyExpire:
@@ -36,7 +36,7 @@ rule GnbKeyExpire:
 
 // Adversary compromises a gNB's signing key (key leakage)
 rule GnbCompromise:
-    [ !GnbSignKey(cid, sk_id, exp) ]
+    [ !GnbSignKey(<cid, exp>, sk_id) ]
   --[ GnbCompromised(cid, exp) ]->
     [ Out(sk_id) ]
 
@@ -73,7 +73,7 @@ rule GnbBootstrapSend:
       sig = ibs_sign(sk_id, bootstrap_msg)
   in
     [ !BootstrapReady(cid, k0, t0)
-    , !GnbSignKey(cid, sk_id, exp), Fr(~t_sign)
+    , !GnbSignKey(<cid, exp> sk_id), Fr(~t_sign)
     ]
   --[ SIB_TF5_Sent(cid, k0, t0, ~t_sign) ]->
     [ Out(<bootstrap_msg, sig>)
